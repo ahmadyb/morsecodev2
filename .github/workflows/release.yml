@@ -225,7 +225,15 @@ jobs:
           profile: pixel_6
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: bash tools/emulator_smoke.sh "${{ needs.build.outputs.version }}"
+          script: |
+            set +e
+            bash tools/emulator_smoke.sh "${{ needs.build.outputs.version }}" 2>&1 | tee /tmp/smoke.log
+            STATUS=${PIPESTATUS[0]}
+            if [ "$STATUS" -ne 0 ]; then
+              grep -E "FAIL|error:|IllegalState|FATAL" /tmp/smoke.log | head -40 \
+                | while IFS= read -r line; do echo "::error title=smoke::${line:0:800}"; done
+            fi
+            exit "$STATUS"
 
       - name: Upload emulator screenshots
         if: always()
@@ -240,8 +248,11 @@ jobs:
       # that expires. `[skip ci]` keeps this from starting another run.
       - name: Commit the screenshots
         if: always() && github.ref_type == 'branch' && hashFiles('screenshots/*.png') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
+          ls -la screenshots
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
           mkdir -p docs/screenshots
@@ -249,10 +260,28 @@ jobs:
           git add docs/screenshots
           if git diff --cached --quiet; then
             echo "screenshots unchanged"
-          else
-            git commit -m "ci: emulator screenshots from run ${GITHUB_RUN_ID} [skip ci]"
-            git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}"
+            exit 0
           fi
+          git commit -m "ci: emulator screenshots from run ${GITHUB_RUN_ID} [skip ci]"
+          if git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}" 2>/tmp/push.log; then
+            echo "pushed screenshots with git"
+            exit 0
+          fi
+          # git push can be refused by branch rules; the contents API is the fallback, and the
+          # screenshots are the evidence that the release opens, so they must land somewhere.
+          echo "::warning title=screenshots::git push failed, falling back to the contents API"
+          tail -5 /tmp/push.log
+          for f in screenshots/*.png; do
+            name="docs/screenshots/$(basename "$f")"
+            sha=$(gh api "repos/${GITHUB_REPOSITORY}/contents/$name?ref=${GITHUB_REF_NAME}" \
+                    --jq .sha 2>/dev/null || true)
+            args=(-f "message=ci: emulator screenshot $(basename "$f") [skip ci]"
+                  -f "branch=${GITHUB_REF_NAME}"
+                  -f "content=$(base64 -w0 "$f")")
+            [ -n "$sha" ] && args+=(-f "sha=$sha")
+            gh api -X PUT "repos/${GITHUB_REPOSITORY}/contents/$name" "${args[@]}" >/dev/null \
+              || echo "::error title=screenshots::could not upload $name"
+          done
 
   release:
     name: Publish GitHub release
