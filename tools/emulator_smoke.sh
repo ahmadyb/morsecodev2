@@ -68,17 +68,22 @@ fi
 [ -n "$DEBUG_APK" ] || bad "no debug APK in $OUT/"
 printf '   release: %s\ndebug:   %s\n' "$RELEASE_APK" "${DEBUG_APK:-none}"
 
+wait_boot() {
+  adb wait-for-device || return 1
+  for _ in $(seq 1 120); do
+    if [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; then
+      adb shell settings put global window_animation_scale 0 >/dev/null 2>&1 || true
+      adb shell settings put global transition_animation_scale 0 >/dev/null 2>&1 || true
+      adb shell settings put global animator_duration_scale 0 >/dev/null 2>&1 || true
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
 say "Waiting for the device"
-adb wait-for-device || { bad "no device"; exit 1; }
-BOOTED=""
-for _ in $(seq 1 90); do
-  if [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = "1" ]; then BOOTED="yes"; break; fi
-  sleep 2
-done
-[ "$BOOTED" = "yes" ] && ok "device booted" || bad "device never finished booting"
-adb shell settings put global window_animation_scale 0 >/dev/null 2>&1 || true
-adb shell settings put global transition_animation_scale 0 >/dev/null 2>&1 || true
-adb shell settings put global animator_duration_scale 0 >/dev/null 2>&1 || true
+wait_boot && ok "device booted" || bad "device never finished booting"
 printf '   api=%s  abi=%s\n' \
   "$(adb shell getprop ro.build.version.sdk | tr -d '\r')" \
   "$(adb shell getprop ro.product.cpu.abi | tr -d '\r')"
@@ -139,15 +144,26 @@ adb logcat -c >/dev/null 2>&1 || true
 
 say "Seed the emulator with media"
 # Three tiny images so the Files tab exercises MediaStore paging, thumbnails and day grouping
-# instead of only its empty state. Best effort - a device that refuses the scan still runs the
-# assertions below, which are about the app.
-if [ -n "${MORSE_MEDIA_DIR:-}" ] && [ -d "$MORSE_MEDIA_DIR" ]; then
-  adb push "$MORSE_MEDIA_DIR/." /sdcard/Pictures/ >/dev/null 2>&1 || true
+# instead of only its empty state. `MEDIA_SCANNER_SCAN_FILE` has been a no-op since Android 10, so
+# the volume is rescanned by the only thing that reliably triggers it: a reboot.
+SEED_COUNT=$(ls -1 "${MORSE_MEDIA_DIR:-/nonexistent}" 2>/dev/null | wc -l)
+if [ "$SEED_COUNT" -gt 0 ]; then
+  adb shell "mkdir -p /sdcard/Pictures" >/dev/null 2>&1 || true
+  if adb push "$MORSE_MEDIA_DIR/." /sdcard/Pictures/ >/dev/null 2>&1; then
+    ok "pushed $SEED_COUNT file(s) to /sdcard/Pictures"
+    adb reboot >/dev/null 2>&1 || true
+    sleep 5
+    if wait_boot; then
+      note "rebooted so MediaProvider rescans the volume"
+    else
+      bad "the device did not come back after the media seed reboot"
+    fi
+  else
+    note "could not push media - continuing with the device's own library"
+  fi
+else
+  note "no seed media configured (MORSE_MEDIA_DIR)"
 fi
-for f in /sdcard/Pictures/*.png; do
-  adb shell "am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file://$f" >/dev/null 2>&1 || true
-done
-adb shell "content call --uri content://media/external/images/media --method scan_file --arg /sdcard/Pictures" >/dev/null 2>&1 || true
 COUNT=$(adb shell "content query --uri content://media/external/images/media --projection _id" 2>/dev/null | grep -c "_id" || true)
 note "media rows visible to MediaStore: ${COUNT:-0}"
 
