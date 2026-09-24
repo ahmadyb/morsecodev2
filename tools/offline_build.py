@@ -202,6 +202,16 @@ class Sh:
         )
         if p.returncode != 0:
             print(p.stdout)
+            # Compilers and dexers bury the actual cause under a stack trace, and this build
+            # reports its failures through CI annotations that only keep the tail of the log -
+            # so repeat the head of the error last, where it survives.
+            lines = [ln for ln in (p.stdout or "").splitlines() if ln.strip()]
+            print("FAILURE-FIRST-LINES:")
+            for line in lines[:25]:
+                print("    " + line)
+            print("FAILURE-LAST-LINES:")
+            for line in lines[-10:]:
+                print("    " + line)
             sys.exit("error: command failed with %d: %s" % (p.returncode, " ".join(map(str, cmd))))
         if not quiet and p.stdout.strip():
             for line in p.stdout.strip().splitlines()[-6:]:
