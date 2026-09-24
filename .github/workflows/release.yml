@@ -144,7 +144,7 @@ jobs:
           python3 tools/offline_build.py 2>&1 | tee /tmp/offline.log
           OFF=${PIPESTATUS[0]}
           if [ "$OFF" -ne 0 ]; then
-            tail -30 /tmp/offline.log | while IFS= read -r line; do
+            tail -60 /tmp/offline.log | while IFS= read -r line; do
               [ -n "$line" ] && echo "::error title=offline-build::${line:0:800}"
             done
             exit 1
@@ -250,7 +250,7 @@ jobs:
           python3 tools/offline_build.py 2>&1 | tee /tmp/offline.log
           STATUS=${PIPESTATUS[0]}
           if [ "$STATUS" -ne 0 ]; then
-            tail -30 /tmp/offline.log | while IFS= read -r line; do
+            tail -60 /tmp/offline.log | while IFS= read -r line; do
               [ -n "$line" ] && echo "::error title=offline-build::${line:0:800}"
             done
           fi

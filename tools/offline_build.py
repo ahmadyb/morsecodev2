@@ -403,16 +403,45 @@ def stage_kotlin(sh, T, r_kt, jobs):
     return [out_compat, out_main] if compat else [out_main]
 
 
+def sanitise_jar(path, dest_dir):
+    """
+    Copy a jar without the entries a dexer cannot read.
+
+    kotlin-stdlib is a multi-release jar: it carries `META-INF/versions/9/module-info.class`
+    (class file version 53) plus its own `module-info.class`. d8 aborts with
+    "Compilation failed to complete" on those, while dx quietly ignored them - which is exactly
+    the difference between the sandbox build and a CI runner. Everything else is copied verbatim.
+    """
+    name = os.path.basename(path)
+    os.makedirs(dest_dir, exist_ok=True)
+    out = os.path.join(dest_dir, name)
+    with zipfile.ZipFile(path) as src, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as dst:
+        kept = 0
+        for item in src.infolist():
+            entry = item.filename
+            if entry.startswith("META-INF/versions/") or entry.endswith("module-info.class"):
+                continue
+            dst.writestr(item, src.read(entry))
+            kept += 1
+    return out, kept
+
+
 def stage_dex(sh, T, class_dirs):
     out = os.path.join(BUILD, "classes.dex")
     if os.path.exists(out):
         os.remove(out)
-    runtime = kotlin_runtime_jars(T)
-    if not runtime:
+    jars = kotlin_runtime_jars(T)
+    if not jars:
         sys.exit("error: no kotlin-stdlib.jar next to %s - the APK would be missing the Kotlin "
                  "runtime (see kotlin_runtime_jars)" % T["kotlinc"])
-    for jar in runtime:
-        print("    dexing %s" % os.path.basename(jar))
+    jar_dir = os.path.join(BUILD, "runtime-jars")
+    shutil.rmtree(jar_dir, ignore_errors=True)
+    os.makedirs(jar_dir, exist_ok=True)
+    runtime = []
+    for jar in jars:
+        clean, kept = sanitise_jar(jar, jar_dir)
+        print("    dexing %s (%d entries)" % (os.path.basename(jar), kept))
+        runtime.append(clean)
     sh.run(
         dexer_cmd(T, out) + class_dirs + runtime,
         quiet=True,
