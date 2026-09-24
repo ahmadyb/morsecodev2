@@ -216,7 +216,19 @@ if adb shell dumpsys activity activities 2>/dev/null | grep -q "OnboardingActivi
 fi
 
 say "App log (logcat tag $LOGCAT_TAG)"
-adb logcat -d -s "$LOGCAT_TAG":V 2>/dev/null | sed 's/^/   /' | tail -30
+APP_LOG=$(adb logcat -d -s "$LOGCAT_TAG":V 2>/dev/null | tail -40)
+printf '%s\n' "$APP_LOG" | sed 's/^/   /'
+# Anything the app logged about a failure is worth an annotation: those lines carry the reason a
+# screen came up empty, and they are otherwise buried in the job log.
+printf '%s\n' "$APP_LOG" | grep -iE "fail|error|denied|exception" | tail -6 \
+  | while IFS= read -r line; do [ -n "$line" ] && note "app log: $line"; done
+GRANTS=$(adb shell "dumpsys package $PACKAGE" 2>/dev/null | grep -E "READ_MEDIA|READ_EXTERNAL" | head -4 | tr -s ' ')
+note "granted media permissions: $(printf '%s' "$GRANTS" | tr '\n' ' ')"
+MEDIA_URI_CHECK=$(adb shell "content query --uri content://media/external/file --projection _id,_display_name,mime_type --where \"mime_type LIKE 'image/%'\"" 2>&1 | head -4)
+note "files-table rows for image/%: $(printf '%s' "$MEDIA_URI_CHECK" | grep -c "_id" || true)"
+printf '%s' "$MEDIA_URI_CHECK" | head -3 | while IFS= read -r line; do
+  [ -n "$line" ] && note "files table: $(printf '%s' "$line" | head -c 200)"
+done
 if adb logcat -d -s "$LOGCAT_TAG":V 2>/dev/null | grep -q "Main resumed"; then
   ok "MainActivity reached onResume"
 else
