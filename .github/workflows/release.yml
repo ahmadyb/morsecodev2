@@ -227,6 +227,21 @@ jobs:
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
+      # Keeping the invariant "the tag points at the commit the artifacts came from" also on re-runs
+      # that overwrite an existing release, so a download can always be matched to a source tree.
+      - name: Point the tag at this commit
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/arena/')
+        run: |
+          set -euo pipefail
+          V="${{ steps.ver.outputs.name }}"
+          TAG="${{ steps.meta.outputs.tag }}"
+          test -f "out/MorseCode-${V}-release.apk" || { echo "::error::nothing to publish"; exit 1; }
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git tag -f "$TAG" "$GITHUB_SHA"
+          git push -f origin "refs/tags/$TAG"
+          echo "::notice::${TAG} points at $GITHUB_SHA"
+
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4
         with:

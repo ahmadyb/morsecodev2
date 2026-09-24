@@ -71,7 +71,8 @@ adb install -r MorseCode-1.0.0-release.apk         # phones
 4. verifies the release signature with `apksigner` (the signer and signing schemes are reported
    as a workflow notice) and writes `SHA256SUMS.txt`,
 5. uploads the three artifacts and **publishes them on a GitHub release** (`v1.0.0` for branch
-   pushes, or the pushed tag — the tag is created on the built commit, not on `main`).
+   pushes, or the pushed tag). The tag is (re)pointed at the built commit, never at `main`, so a
+download always matches a source tree..
    Manual runs: *Actions → Build & Release → Run workflow*.
 
 Signing uses `keystore/keystore.properties` (or the committed demo key) in CI. Set the
@@ -167,6 +168,7 @@ app/src/main/java/com/morsecode/app/
   util/ThemeColors.kt       Sunflower Hue design system
 tools/                      offline_build.py, make_icons.py, make_icons_ui.py
 docs/                       ACCEPTANCE.md (23 tests), ARCHITECTURE.md
+CHANGELOG.md                what each release contains
 morseliink/                 the design mocks (a-series dark, b-series light)
 ```
 
@@ -174,6 +176,7 @@ morseliink/                 the design mocks (a-series dark, b-series light)
 
 * [`docs/ACCEPTANCE.md`](docs/ACCEPTANCE.md) — the 23 acceptance tests and how to verify artifacts.
 * [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — engine, wire protocol, WebShare routes, design system.
+* [`CHANGELOG.md`](CHANGELOG.md) — what each release contains.
 
 ## Documented deviations
 
