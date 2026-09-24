@@ -224,11 +224,20 @@ printf '%s\n' "$APP_LOG" | grep -iE "fail|error|denied|exception" | tail -6 \
   | while IFS= read -r line; do [ -n "$line" ] && note "app log: $line"; done
 GRANTS=$(adb shell "dumpsys package $PACKAGE" 2>/dev/null | grep -E "READ_MEDIA|READ_EXTERNAL" | head -4 | tr -s ' ')
 note "granted media permissions: $(printf '%s' "$GRANTS" | tr '\n' ' ')"
-MEDIA_URI_CHECK=$(adb shell "content query --uri content://media/external/file --projection _id,_display_name,mime_type --where \"mime_type LIKE 'image/%'\"" 2>&1 | head -4)
-note "files-table rows for image/%: $(printf '%s' "$MEDIA_URI_CHECK" | grep -c "_id" || true)"
-printf '%s' "$MEDIA_URI_CHECK" | head -3 | while IFS= read -r line; do
-  [ -n "$line" ] && note "files table: $(printf '%s' "$line" | head -c 200)"
-done
+# `content` wants colon-separated columns, and the row's own fields (mime, size) are what decide
+# whether the app's `mime_type LIKE 'image/%' AND _size > 0` filter can even match.
+ROW=$(adb shell "content query --uri content://media/external/images/media --projection _id:_display_name:_mime_type:_size" 2>&1 | head -3 | tr '\n' ' ')
+note "images table row: $(printf '%s' "$ROW" | head -c 300)"
+
+if app_alive; then
+  note "app is running; the query below runs as the app's own uid"
+fi
+# The decisive probe: the same query the app makes, executed as the debug package's uid, which
+# has exactly the app's permissions. Shell has broader access and can mask a permission problem.
+APP_Q=$(adb shell "run-as $DEBUG_PACKAGE content query --uri content://media/external/file \
+  --projection _id:_display_name:_mime_type:_size \
+  --where \"mime_type LIKE 'image/%' AND _size > 0\"" 2>&1 | head -4 | tr '\n' ' ')
+note "app-uid files query: $(printf '%s' "$APP_Q" | head -c 300)"
 if adb logcat -d -s "$LOGCAT_TAG":V 2>/dev/null | grep -q "Main resumed"; then
   ok "MainActivity reached onResume"
 else
