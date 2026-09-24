@@ -371,6 +371,11 @@ ERR_TAIL=$(adb logcat -d -s "$LOGCAT_TAG":V 2>/dev/null | grep -iE "fail|error|d
 # the phone's port on the runner's loopback, so the test speaks to the phone exactly as a laptop
 # on the same Wi-Fi would - waiting page first, until the phone holder accepts, then the app.
 say "WebShare end to end"
+# One line is recorded and annotated at the end of this section: the annotation budget is small
+# enough that per-check notices do not all survive, and "which of the six steps failed" is exactly
+# what is needed when this fails on a runner nobody can log into.
+WS_FROM=$FAILURES
+WS_NOTE=""
 # The browser surface is one of the four things this app is, and "it started" is not the same as
 # "a browser can use it". The emulator's network is enough to prove both: `adb forward` puts the
 # phone's port on the runner's loopback, so the test speaks to the phone exactly as a laptop on the
@@ -413,10 +418,14 @@ fi
 if [ "$WS_STARTED" = "1" ]; then
   URL=$(adb logcat -d -s "$LOGCAT_TAG":V 2>/dev/null | grep -o "WebShare mode started - http[^ ]*" | tail -1 | sed 's/.*- //')
   ann "WebShare is serving $URL"
-  adb forward tcp:33455 tcp:33455 >/dev/null 2>&1 || true
+  FWD=$(adb forward tcp:33455 tcp:33455 2>&1 | tr -d '\r')
+  WS_NOTE="$WS_NOTE fwd=$FWD"
 
   # 1. Before consent the browser must not see the phone's files - only the waiting page.
-  WAIT_HTML=$(curl -s -m 10 http://127.0.0.1:33455/ 2>/dev/null)
+  WAIT_HTML=$(curl -s -m 10 -w '\n%{http_code}' http://127.0.0.1:33455/ 2>/dev/null)
+  WAIT_CODE=$(printf '%s' "$WAIT_HTML" | tail -1)
+  WAIT_HTML=$(printf '%s' "$WAIT_HTML" | sed '$d')
+  WS_NOTE="$WS_NOTE waiting=$WAIT_CODE/${#WAIT_HTML}B"
   if printf '%s' "$WAIT_HTML" | grep -q "Waiting for the phone to accept"; then
     ok "an unconsented browser gets the waiting page"
     if printf '%s' "$WAIT_HTML" | grep -q "data-nav=\"photos\""; then
@@ -428,12 +437,13 @@ if [ "$WS_STARTED" = "1" ]; then
 
   # 2. The waiting page polls /api/consent; that request is what makes the phone ask. It blocks
   #    until the phone answers, so it runs in the background while the dialog is driven.
-  curl -s -m 40 http://127.0.0.1:33455/api/consent -o /tmp/consent.json 2>/dev/null &
+  curl -s -m 40 -w '%{http_code}' http://127.0.0.1:33455/api/consent -o /tmp/consent.json > /tmp/consent.code 2>/dev/null &
   CONSENT_PID=$!
   sleep 4
 
   # The copy is pinned by the spec, and the popup spent a while showing two bare buttons because
   # the button row was set as the dialog's content view, replacing the card that held the words.
+  WS_NOTE="$WS_NOTE asked=$(screen_shows "Browser wants access" && echo yes || echo no)"
   if screen_shows "Browser wants access"; then
     ok "the phone asks 'Browser wants access'"
     if screen_shows "A browser session wants to browse your phone."; then
@@ -446,6 +456,7 @@ if [ "$WS_STARTED" = "1" ]; then
       set -- $(printf '%s' "$ACCEPT" | grep -o '[0-9]*')
       if [ "$#" -ge 4 ]; then
         adb shell input tap "$(( ($1 + $3) / 2 ))" "$(( ($2 + $4) / 2 ))" >/dev/null 2>&1
+        WS_NOTE="$WS_NOTE accept=tap"
         ok "tapped Accept"
       fi
     else
@@ -455,6 +466,7 @@ if [ "$WS_STARTED" = "1" ]; then
       adb shell input keyevent 61 >/dev/null 2>&1
       adb shell input keyevent 61 >/dev/null 2>&1
       adb shell input keyevent 66 >/dev/null 2>&1
+      WS_NOTE="$WS_NOTE accept=keys"
     fi
     shot web-share-consent
   else
@@ -463,6 +475,7 @@ if [ "$WS_STARTED" = "1" ]; then
   fi
 
   wait "$CONSENT_PID" 2>/dev/null
+  WS_NOTE="$WS_NOTE consent=$(cat /tmp/consent.code 2>/dev/null)/$(head -c 60 /tmp/consent.json 2>/dev/null | tr -d '\n')"
   note "consent answer: $(head -c 120 /tmp/consent.json 2>/dev/null)"
   if grep -q '"granted":true' /tmp/consent.json 2>/dev/null; then
     ok "the session was granted"
@@ -471,7 +484,10 @@ if [ "$WS_STARTED" = "1" ]; then
   fi
 
   # 3. Now the browser gets the real app, and it carries no QR code (product decision).
-  SPA=$(curl -s -m 15 http://127.0.0.1:33455/ 2>/dev/null)
+  SPA=$(curl -s -m 15 -w '\n%{http_code}' http://127.0.0.1:33455/ 2>/dev/null)
+  SPA_CODE=$(printf '%s' "$SPA" | tail -1)
+  SPA=$(printf '%s' "$SPA" | sed '$d')
+  WS_NOTE="$WS_NOTE spa=$SPA_CODE/${#SPA}B"
   if printf '%s' "$SPA" | grep -q "data-nav=\"photos\""; then
     ok "the consented browser gets the file browser"
     if printf '%s' "$SPA" | grep -qi "data-nav=\"qr\"\|>QR<\|QR code"; then
@@ -491,6 +507,7 @@ if [ "$WS_STARTED" = "1" ]; then
     fi
   else
     bad "the consented browser did not get the file browser"
+    WS_NOTE="$WS_NOTE spaStart=$(printf '%s' "$SPA" | head -c 120 | tr -d '\n')"
     note "first 200 bytes: $(printf '%s' "$SPA" | head -c 200)"
   fi
   shot web-share-served
@@ -508,6 +525,12 @@ if [ "$WS_STARTED" = "1" ]; then
     note "the Stop button was not found or did not log a stop"
   fi
   adb forward --remove tcp:33455 >/dev/null 2>&1 || true
+fi
+
+if [ "$FAILURES" -gt "$WS_FROM" ]; then
+  bad "WebShare end-to-end:$WS_NOTE"
+else
+  ann "WebShare end-to-end ok:$WS_NOTE"
 fi
 
 say "Back stack sweep"
