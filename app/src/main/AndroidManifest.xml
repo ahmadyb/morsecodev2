@@ -4,9 +4,10 @@
   Offline, peer-to-peer file transfer for Android.
   Permission set is exactly the set required by the product specification - do not add more.
 -->
+<!-- The application id lives in app/build.gradle.kts (namespace) and is injected into the
+     offline build by tools/offline_build.py: AGP 8 no longer allows a package attribute here. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    package="com.morsecode.app">
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- local network + radio -->
     <uses-permission android:name="android.permission.INTERNET" />

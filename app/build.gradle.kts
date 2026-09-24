@@ -48,8 +48,9 @@ android {
         create("release") {
             val props = keystoreProps()
             val demo = rootProject.file("keystore/morsecode-release.jks")
-            val file = (props.getProperty("storeFile")?.let { file(it) })
-                ?: (if (demo.exists()) demo else null)
+            // storeFile in keystore.properties is relative to the repository root, not to :app.
+            val configured = props.getProperty("storeFile")?.let { rootProject.file(it) }
+            val file = configured ?: (if (demo.exists()) demo else null)
             if (file != null && file.exists()) {
                 storeFile = file
                 storePassword = props.getProperty("storePassword") ?: "morsecode"
@@ -93,7 +94,9 @@ android {
     }
 
     buildFeatures {
-        buildConfig = true
+        // The app ships its own BuildConfig (see BuildConfig.kt) so the Gradle build and the
+        // offline build expose identical constants - generating a second one would collide.
+        buildConfig = false
         viewBinding = false
         compose = false
     }

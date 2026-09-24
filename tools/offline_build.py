@@ -170,6 +170,27 @@ def check_env(T, extra_path=()):
 # --------------------------------------------------------------------------
 
 
+def staged_manifest():
+    """
+    aapt2 insists on a `package` attribute in the manifest; AGP 8 forbids it in the source.
+    The source manifest stays AGP-clean and the attribute is injected for this build only.
+    """
+    src = os.path.join(MAIN, "AndroidManifest.xml")
+    with open(src, "r", encoding="utf-8") as fh:
+        text = fh.read()
+    if 'package="' in text.split(">", 1)[0]:
+        return src
+    marker = "<manifest"
+    idx = text.index(marker)
+    end = text.index(">", idx)
+    declared = text[idx:end].rstrip()
+    patched = text[:idx] + declared + '\n    package="%s"' % APP_ID + text[end:]
+    out = os.path.join(BUILD, "AndroidManifest.xml")
+    with open(out, "w", encoding="utf-8") as fh:
+        fh.write(patched)
+    return out
+
+
 def stage_resources(sh, T, proto):
     """aapt2 compile + link.  Returns (apk_path, r_txt_path)."""
     res_zip = os.path.join(BUILD, "resources.zip")
@@ -185,7 +206,7 @@ def stage_resources(sh, T, proto):
         "-I",
         os.path.join(T["platforms"], "android-34", "android.jar"),
         "--manifest",
-        os.path.join(MAIN, "AndroidManifest.xml"),
+        staged_manifest(),
         "-R",
         res_zip,
         "--output-text-symbols",
@@ -287,19 +308,46 @@ def stage_dex(sh, T, class_dirs):
     if os.path.exists(out):
         os.remove(out)
     sh.run(
-        [
-            T["java"],
-            "-cp",
-            os.path.join(T["build_tools"], "lib", "dx.jar"),
-            "com.android.dx.command.Main",
-            "--dex",
-            "--min-sdk-version=" + MIN_SDK,
-            "--output=" + out,
-        ]
-        + class_dirs,
+        dexer_cmd(T, out) + class_dirs,
         quiet=True,
     )
     return out
+
+
+def dexer_cmd(T, out):
+    """
+    Picks a dexer from the build-tools the machine actually has.
+
+    build-tools <= 30 ship dx.jar; newer ones ship d8 (a D8 shell script plus d8.jar). Both
+    accept --min-sdk-version, so the only real difference is the entry point.
+    """
+    requested = os.environ.get("MC_DEXER", "").lower()
+    dx_jar = os.path.join(T["build_tools"], "lib", "dx.jar")
+    d8_jar = os.path.join(T["build_tools"], "lib", "d8.jar")
+    d8_script = os.path.join(T["build_tools"], "d8")
+
+    if requested == "dx" or (not requested and os.path.exists(dx_jar)):
+        if not os.path.exists(dx_jar):
+            sys.exit("error: MC_DEXER=dx but %s does not exist" % dx_jar)
+        return [
+            T["java"], "-cp", dx_jar, "com.android.dx.command.Main",
+            "--dex", "--min-sdk-version=" + MIN_SDK, "--output=" + out,
+        ]
+    if os.path.exists(d8_jar):
+        return [
+            T["java"], "-cp", d8_jar, "com.android.tools.r8.D8",
+            "--min-api", MIN_SDK,
+            "--lib", os.path.join(T["platforms"], "android-34", "android.jar"),
+            "--output", out,
+        ]
+    if os.path.exists(d8_script):
+        return [
+            d8_script, "--min-api", MIN_SDK, "--output", out,
+        ]
+    sys.exit(
+        "error: no dexer found in %s (looked for lib/dx.jar, lib/d8.jar, d8).\n"
+        "Install build-tools 30 or newer, or point --build-tools at one." % T["build_tools"]
+    )
 
 
 ADDITIONAL_ZIP_ENTRIES = [

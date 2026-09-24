@@ -44,12 +44,21 @@ you want a wrapper in your fork. The Gradle debug build carries the `.debug` app
 (standard AGP behaviour, installs side by side); the offline script keeps the plain
 `com.morsecode.app` id for both APKs.
 
-### 3. CI
+### 3. CI — builds and publishes the release
 
-`.github/workflows/release.yml` builds the debug APK, the signed release APK and the AAB on every
-tag, uploads them as artifacts and attaches them to a GitHub release. Add `MC_KEYSTORE_PASSWORD`
-and `MC_KEY_PASSWORD` (plus `MC_KEYSTORE_FILE`, base64-decoded in a preceding step if you use a
-private key) as repository secrets to sign with your own key.
+`.github/workflows/release.yml` runs on every push to `main` / `arena/**` and on `v*` tags:
+
+1. installs JDK 17, the Android SDK (platforms 23 + 34, build-tools 34.0.0) and Gradle 8.7,
+2. builds `assembleDebug`, `assembleRelease` and `bundleRelease`,
+3. **if Gradle cannot reach Google Maven**, automatically falls back to `tools/offline_build.py`
+   (it downloads the Kotlin compiler and drives aapt2 → kotlinc → d8 → zipalign → apksigner),
+4. verifies the release signature with `apksigner` and writes `SHA256SUMS.txt`,
+5. uploads the three artifacts and **publishes them on a GitHub release** (`v1.0.0` for branch
+   pushes, or the pushed tag). Manual runs: *Actions → Build & Release → Run workflow*.
+
+Signing uses `keystore/keystore.properties` (or the committed demo key) in CI. Set the
+`MC_KEYSTORE_PASSWORD` / `MC_KEY_PASSWORD` repository secrets — and provide your own keystore —
+before you ship to a store.
 
 ### Signing
 
