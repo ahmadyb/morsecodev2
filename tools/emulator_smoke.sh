@@ -13,7 +13,8 @@
 #
 set -uo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$HERE/.." && pwd)"
 cd "$ROOT"
 
 VERSION="${1:-}"
@@ -146,10 +147,14 @@ say "Seed the emulator with media"
 # Three tiny images so the Files tab exercises MediaStore paging, thumbnails and day grouping
 # instead of only its empty state. `MEDIA_SCANNER_SCAN_FILE` has been a no-op since Android 10, so
 # the volume is rescanned by the only thing that reliably triggers it: a reboot.
-SEED_COUNT=$(ls -1 "${MORSE_MEDIA_DIR:-/nonexistent}" 2>/dev/null | wc -l)
+# Located relative to this script, not to the environment: the emulator action runs `script`
+# through sh and the exported variable did not survive it, so the seed silently did nothing.
+SEED_DIR="${MORSE_MEDIA_DIR:-$HERE/media-seed}"
+SEED_COUNT=$(ls -1 "$SEED_DIR" 2>/dev/null | wc -l)
+note "seed directory: $SEED_DIR ($SEED_COUNT file(s))"
 if [ "$SEED_COUNT" -gt 0 ]; then
   adb shell "mkdir -p /sdcard/Pictures" >/dev/null 2>&1 || true
-  if adb push "$MORSE_MEDIA_DIR/." /sdcard/Pictures/ >/dev/null 2>&1; then
+  if adb push "$SEED_DIR/." /sdcard/Pictures/ >/dev/null 2>&1; then
     ok "pushed $SEED_COUNT file(s) to /sdcard/Pictures"
     adb reboot >/dev/null 2>&1 || true
     sleep 5
@@ -162,7 +167,7 @@ if [ "$SEED_COUNT" -gt 0 ]; then
     note "could not push media - continuing with the device's own library"
   fi
 else
-  note "no seed media configured (MORSE_MEDIA_DIR)"
+  note "no seed media found in $SEED_DIR"
 fi
 COUNT=$(adb shell "content query --uri content://media/external/images/media --projection _id" 2>/dev/null | grep -c "_id" || true)
 note "media rows visible to MediaStore: ${COUNT:-0}"
