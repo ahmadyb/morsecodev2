@@ -2,6 +2,7 @@ package com.morsecode.app.core.storage
 
 import android.content.ContentProvider
 import android.content.ContentValues
+import android.content.Context
 import android.database.Cursor
 import android.database.MatrixCursor
 import android.net.Uri
@@ -13,7 +14,11 @@ import java.io.FileNotFoundException
 
 /**
  * A framework-only ContentProvider (no AndroidX FileProvider) that hands received files to other
- * apps through `content://com.morsecode.app.share/files/<relative path>`.
+ * apps through `content://<applicationId>.share/files/<relative path>`.
+ *
+ * The authority is derived from the running package rather than hard-coded: the manifest declares
+ * `${applicationId}.share`, so a debug build installed next to a release build owns its own
+ * authority instead of being rejected with INSTALL_FAILED_CONFLICTING_PROVIDER.
  *
  * Reads are limited to the app's own download root, the received folder and the app files dir -
  * a caller can never walk out of those trees.
@@ -21,13 +26,15 @@ import java.io.FileNotFoundException
 class ShareProvider : ContentProvider() {
 
     companion object {
-        const val AUTHORITY = "com.morsecode.app.share"
         const val SCHEME = "content"
         const val PATH = "files"
 
-        fun uriFor(file: File): Uri = Uri.Builder()
+        /** `com.morsecode.app.share` for a release build, `...debug.share` for a debug build. */
+        fun authority(ctx: Context): String = ctx.packageName + ".share"
+
+        fun uriFor(ctx: Context, file: File): Uri = Uri.Builder()
             .scheme(SCHEME)
-            .authority(AUTHORITY)
+            .authority(authority(ctx))
             .appendPath(PATH)
             .appendPath(file.absolutePath)
             .build()

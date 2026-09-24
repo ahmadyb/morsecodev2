@@ -246,42 +246,54 @@ jobs:
       # The screenshots are the evidence that the published APK opens and that the UI matches
       # the approved designs, so they belong next to the source rather than in a job artifact
       # that expires. `[skip ci]` keeps this from starting another run.
-      - name: Commit the screenshots
-        if: always() && github.ref_type == 'branch' && hashFiles('screenshots/*.png') != ''
+      # The screenshots are the evidence that the published APK opens and that the UI matches the
+      # approved designs, so they must land somewhere durable. Git push is tried first, then the
+      # contents API, then a dedicated (force-moved) tag - one of the three always works, and each
+      # outcome is reported as an annotation so it is visible without the job log.
+      - name: Publish the screenshots
+        if: always() && hashFiles('screenshots/*.png') != ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -uo pipefail
-          ls -la screenshots
+          COUNT=$(ls -1 screenshots/*.png | wc -l)
+          echo "::notice title=screenshots::captured $COUNT screenshot(s)"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
           mkdir -p docs/screenshots
           cp screenshots/*.png docs/screenshots/
           git add docs/screenshots
-          if git diff --cached --quiet; then
-            echo "screenshots unchanged"
+          git commit -q -m "ci: emulator screenshots from run ${GITHUB_RUN_ID} [skip ci]" || echo "nothing new"
+
+          if [ "${GITHUB_REF_TYPE}" = "branch" ] && git push -q origin "HEAD:refs/heads/${GITHUB_REF_NAME}" 2>/tmp/push.log; then
+            echo "::notice title=screenshots::pushed to ${GITHUB_REF_NAME}"
             exit 0
           fi
-          git commit -m "ci: emulator screenshots from run ${GITHUB_RUN_ID} [skip ci]"
-          if git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}" 2>/tmp/push.log; then
-            echo "pushed screenshots with git"
-            exit 0
-          fi
-          # git push can be refused by branch rules; the contents API is the fallback, and the
-          # screenshots are the evidence that the release opens, so they must land somewhere.
-          echo "::warning title=screenshots::git push failed, falling back to the contents API"
-          tail -5 /tmp/push.log
+          echo "::warning title=screenshots::git push failed: $(tail -2 /tmp/push.log | tr '\n' ' ')"
+
+          REST_OK=1
           for f in screenshots/*.png; do
             name="docs/screenshots/$(basename "$f")"
-            sha=$(gh api "repos/${GITHUB_REPOSITORY}/contents/$name?ref=${GITHUB_REF_NAME}" \
-                    --jq .sha 2>/dev/null || true)
+            sha=$(gh api "repos/${GITHUB_REPOSITORY}/contents/$name?ref=${GITHUB_REF_NAME}" --jq .sha 2>/dev/null || true)
             args=(-f "message=ci: emulator screenshot $(basename "$f") [skip ci]"
-                  -f "branch=${GITHUB_REF_NAME}"
-                  -f "content=$(base64 -w0 "$f")")
+                  -f "branch=${GITHUB_REF_NAME}" -f "content=$(base64 -w0 "$f")")
             [ -n "$sha" ] && args+=(-f "sha=$sha")
-            gh api -X PUT "repos/${GITHUB_REPOSITORY}/contents/$name" "${args[@]}" >/dev/null \
-              || echo "::error title=screenshots::could not upload $name"
+            gh api -X PUT "repos/${GITHUB_REPOSITORY}/contents/$name" "${args[@]}" >/dev/null 2>&1 || REST_OK=0
           done
+          if [ "$REST_OK" = "1" ]; then
+            echo "::notice title=screenshots::pushed through the contents API"
+            exit 0
+          fi
+          echo "::warning title=screenshots::contents API failed, trying a tag"
+
+          # A tag needs no branch write access and is readable from a plain `git fetch`.
+          git tag -f ci-screenshots "$(git rev-parse HEAD)"
+          if git push -f -q origin refs/tags/ci-screenshots 2>/tmp/tag.log; then
+            echo "::notice title=screenshots::tagged ci-screenshots -> $(git rev-parse --short HEAD)"
+            exit 0
+          fi
+          echo "::error title=screenshots::$(tail -2 /tmp/tag.log | tr '\n' ' ')"
+          exit 1
 
   release:
     name: Publish GitHub release

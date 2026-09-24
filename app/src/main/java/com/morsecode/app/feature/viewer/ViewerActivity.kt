@@ -246,7 +246,7 @@ class ViewerActivity : Activity() {
     private fun share() {
         val uri = current ?: return
         try {
-            startActivity(ShareUris.shareIntent(listOf(uri.toString()), contentResolver.getType(uri) ?: "*/*"))
+            startActivity(ShareUris.shareIntent(this, listOf(uri.toString()), contentResolver.getType(uri) ?: "*/*"))
         } catch (t: Throwable) {
             Ui.toast(this, getString(R.string.no_app_for_share))
         }
@@ -267,7 +267,7 @@ class ViewerActivity : Activity() {
         val openRow = W.settingRow(this, "Open with", null, null) {
             sheet.dismiss()
             try {
-                startActivity(ShareUris.viewIntent(uri.toString(), contentResolver.getType(uri) ?: "image/*"))
+                startActivity(ShareUris.viewIntent(this, uri.toString(), contentResolver.getType(uri) ?: "image/*"))
             } catch (t: Throwable) {
                 Ui.toast(this, getString(R.string.no_app_for_share))
             }

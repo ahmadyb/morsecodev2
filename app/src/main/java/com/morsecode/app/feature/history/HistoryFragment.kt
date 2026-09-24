@@ -256,7 +256,7 @@ class HistoryFragment(private val activity: Activity) : Screen {
             sheet.dismiss()
             if (entry.uri.isNotBlank()) {
                 try {
-                    activity.startActivity(ShareUris.viewIntent(entry.uri, "*/*"))
+                    activity.startActivity(ShareUris.viewIntent(activity, entry.uri, "*/*"))
                 } catch (t: Throwable) {
                     Ui.toast(activity, ctx.getString(R.string.no_app_for_share))
                 }

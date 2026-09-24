@@ -221,6 +221,9 @@ def staged_manifest():
     end = text.index(">", idx)
     declared = text[idx:end].rstrip()
     patched = text[:idx] + declared + '\n    package="%s"' % APP_ID + text[end:]
+    # AGP resolves ${applicationId} during manifest merging; the offline link does it here, so a
+    # provider authority (${applicationId}.share) matches the package this build installs as.
+    patched = patched.replace("${applicationId}", APP_ID)
     out = os.path.join(BUILD, "AndroidManifest.xml")
     os.makedirs(BUILD, exist_ok=True)
     with open(out, "w", encoding="utf-8") as fh:

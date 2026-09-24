@@ -140,7 +140,7 @@
         <!-- framework-only file provider (no AndroidX): lets the app hand files to other apps -->
         <provider
             android:name=".core.storage.ShareProvider"
-            android:authorities="com.morsecode.app.share"
+            android:authorities="${applicationId}.share"
             android:exported="false"
             android:grantUriPermissions="true" />
     </application>

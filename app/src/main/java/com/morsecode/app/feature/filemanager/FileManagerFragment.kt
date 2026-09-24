@@ -388,7 +388,7 @@ class FileManagerFragment(private val activity: Activity) : Screen {
                 .putExtra("size", item.size))
         } else {
             try {
-                activity.startActivity(ShareUris.viewIntent(item.uri, item.mime))
+                activity.startActivity(ShareUris.viewIntent(activity, item.uri, item.mime))
             } catch (t: Throwable) {
                 Ui.toast(activity, activity.getString(R.string.no_app_for_share))
             }
@@ -613,7 +613,7 @@ class FileManagerFragment(private val activity: Activity) : Screen {
         val picked = selected.values.map { it.uri }
         if (picked.isEmpty()) return
         try {
-            activity.startActivity(ShareUris.shareIntent(picked, "*/*"))
+            activity.startActivity(ShareUris.shareIntent(activity, picked, "*/*"))
         } catch (t: Throwable) {
             Ui.toast(activity, activity.getString(R.string.no_app_for_share))
         }
