@@ -29,6 +29,10 @@ ACTIVITY="$PACKAGE/.MainActivity"
 LOGCAT_TAG="MorseCode"
 
 mkdir -p "$SHOTS"
+# Each run publishes exactly what it captured: CI copies this directory into the repository, and a
+# leftover file from an earlier run (a step that failed before the sweep finished) would otherwise
+# sit in the docs as if it belonged to the newest build.
+rm -f "$SHOTS"/*.png 2>/dev/null || true
 FAILURES=0
 STEP=0
 
@@ -516,7 +520,46 @@ if [ "$WS_STARTED" = "1" ]; then
   fi
   shot web-share-served
 
-  # 4. Stop it from the phone and confirm the explicit stop works (INV-4 says nothing else stops it).
+  # 4. The theme setting drives every surface, including the one the browser sees. /api/hello
+  #    reports it, so the check is text rather than pixels: toggle the switch in Settings and ask
+  #    the browser what it is being served.
+  THEME_BEFORE=$(curl -s -m 10 http://127.0.0.1:33455/api/hello 2>/dev/null | grep -o '"theme":"[a-z]*"' | head -1)
+  SBOUNDS=$(label_bounds "Settings" || true)
+  if [ -n "$SBOUNDS" ]; then
+    set -- $(printf '%s' "$SBOUNDS" | grep -o '[0-9]*')
+    if [ "$#" -ge 4 ]; then adb shell input tap "$(( ($1 + $3) / 2 ))" "$(( ($2 + $4) / 2 ))" >/dev/null 2>&1; fi
+  fi
+  sleep 2
+  SW=$(dump_ui | tr '>' '\n' | grep 'class="android.widget.Switch"' \
+    | grep -o 'bounds="\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]"' | head -1)
+  if [ -n "$SW" ]; then
+    set -- $(printf '%s' "$SW" | grep -o '[0-9]*')
+    if [ "$#" -ge 4 ]; then
+      adb shell input tap "$(( ($1 + $3) / 2 ))" "$(( ($2 + $4) / 2 ))" >/dev/null 2>&1
+      sleep 2
+      shot theme-toggled
+      THEME_MID=$(curl -s -m 10 http://127.0.0.1:33455/api/hello 2>/dev/null | grep -o '"theme":"[a-z]*"' | head -1)
+      # back the way it was, so the rest of the run sees the shipped default
+      adb shell input tap "$(( ($1 + $3) / 2 ))" "$(( ($2 + $4) / 2 ))" >/dev/null 2>&1
+      sleep 2
+      THEME_AFTER=$(curl -s -m 10 http://127.0.0.1:33455/api/hello 2>/dev/null | grep -o '"theme":"[a-z]*"' | head -1)
+      if [ -n "$THEME_MID" ] && [ "$THEME_MID" != "$THEME_BEFORE" ] && [ "$THEME_AFTER" = "$THEME_BEFORE" ]; then
+        ok "the theme switch flips the served theme ($THEME_BEFORE -> $THEME_MID -> $THEME_AFTER)"
+      else
+        note "theme through the first Settings switch: $THEME_BEFORE then $THEME_MID then $THEME_AFTER"
+      fi
+    fi
+  else
+    note "no switch found on the Settings tab to test the theme with"
+  fi
+
+  # 5. Stop it from the phone and confirm the explicit stop works (INV-4 says nothing else stops it).
+  CBOUNDS=$(label_bounds "Connect" || true)
+  if [ -n "$CBOUNDS" ]; then
+    set -- $(printf '%s' "$CBOUNDS" | grep -o '[0-9]*')
+    if [ "$#" -ge 4 ]; then adb shell input tap "$(( ($1 + $3) / 2 ))" "$(( ($2 + $4) / 2 ))" >/dev/null 2>&1; fi
+    sleep 2
+  fi
   STOP=$(label_bounds "Stop WebShare" || true)
   if [ -n "$STOP" ]; then
     set -- $(printf '%s' "$STOP" | grep -o '[0-9]*')
