@@ -129,7 +129,7 @@ class QrScanActivity : Activity(), SurfaceHolder.Callback {
 
     // ------------------------------------------------------------------ camera
 
-    override fun surfaceCreated(holder: SurfaceHolder?) {
+    override fun surfaceCreated(holder: SurfaceHolder) {
         try {
             camera = Camera.open()
             camera?.setPreviewDisplay(holder)
@@ -140,7 +140,7 @@ class QrScanActivity : Activity(), SurfaceHolder.Callback {
         }
     }
 
-    override fun surfaceChanged(holder: SurfaceHolder?, format: Int, width: Int, height: Int) {
+    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
         try {
             camera?.stopPreview()
             camera?.setPreviewDisplay(holder)
@@ -149,7 +149,11 @@ class QrScanActivity : Activity(), SurfaceHolder.Callback {
         }
     }
 
-    override fun surfaceDestroyed(holder: SurfaceHolder?) {
+    override fun surfaceDestroyed(holder: SurfaceHolder) {
+        releaseCamera()
+    }
+
+    private fun releaseCamera() {
         try {
             camera?.stopPreview()
             camera?.release()
@@ -160,6 +164,6 @@ class QrScanActivity : Activity(), SurfaceHolder.Callback {
 
     override fun onPause() {
         super.onPause()
-        surfaceDestroyed(null)
+        releaseCamera()
     }
 }

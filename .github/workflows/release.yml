@@ -91,8 +91,8 @@ jobs:
           # Failures are surfaced as annotations (readable through the API) and handed to the
           # fallback build instead of ending the job here.
           annotate() {
-            grep -aE "^e: |error:|Unresolved|FAILURE:|What went wrong|Execution failed|Could not (resolve|find|download)|> Task .*FAILED" "$1" \
-              | tail -40 | while IFS= read -r line; do
+            grep -aE "^e: |error:|Unresolved|FAILURE:|What went wrong|Execution failed|Could not (resolve|find|download)|> Task .*FAILED|Caused by" "$1" \
+              | sort -u | head -60 | while IFS= read -r line; do
                   line="${line//$'\r'/}"
                   echo "::error title=gradle::${line:0:800}"
                 done

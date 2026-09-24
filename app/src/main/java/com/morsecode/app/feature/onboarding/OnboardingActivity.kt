@@ -75,8 +75,7 @@ class OnboardingActivity : Activity() {
         setContentView(root)
 
         val detector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-            override fun onFling(e1: MotionEvent?, e2: MotionEvent?, vx: Float, vy: Float): Boolean {
-                if (e1 == null || e2 == null) return false
+            override fun onFling(e1: MotionEvent, e2: MotionEvent, vx: Float, vy: Float): Boolean {
                 val dx = e2.x - e1.x
                 if (Math.abs(dx) < 90f) return false
                 if (dx < 0 && index < 3) index++
@@ -87,8 +86,8 @@ class OnboardingActivity : Activity() {
             }
         })
         slides.setOnTouchListener(object : View.OnTouchListener {
-            override fun onTouch(v: View?, event: MotionEvent?): Boolean {
-                if (event != null) detector.onTouchEvent(event)
+            override fun onTouch(v: View, event: MotionEvent): Boolean {
+                detector.onTouchEvent(event)
                 return true
             }
         })

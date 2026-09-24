@@ -34,6 +34,7 @@ import sys
 import zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+KOTLINC_PATH = "kotlinc"
 APP = os.path.join(ROOT, "app")
 MAIN = os.path.join(APP, "src", "main")
 BUILD = os.path.join(ROOT, "build")
@@ -116,6 +117,7 @@ def tools(args):
         ],
         "aapt2",
     )
+    globals()["KOTLINC_PATH"] = kotlinc
     return {
         "jdk": jdk,
         "java": java,
@@ -278,6 +280,30 @@ def kotlin_sources():
     return sorted(compat), sorted(main)
 
 
+def jvm_default_flag():
+    """
+    Names the switch that pins interface bodies to DefaultImpls.
+
+    Kotlin 2.2 folded `-Xjvm-default` into `-jvm-default`; older compilers only understand the
+    experimental spelling, so the flag is chosen from the compiler's own version string.
+    """
+    text = ""
+    try:
+        p = subprocess.run(
+            [KOTLINC_PATH, "-version"],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+        )
+        text = p.stdout or ""
+    except Exception:
+        text = ""
+    m = re.search(r"kotlinc[^\s]*\s+(\d+)\.(\d+)(?:\.(\d+))?", text)
+    if m:
+        major, minor = int(m.group(1)), int(m.group(2))
+        if (major, minor) >= (2, 2):
+            return "-jvm-default=disable"
+    return "-Xjvm-default=disable"
+
+
 def stage_kotlin(sh, T, r_kt, jobs):
     """Compile compat sources (API 34) then everything else (API 23 - compile-time
     enforcement that the app only uses APIs that exist on Android 6)."""
@@ -289,9 +315,9 @@ def stage_kotlin(sh, T, r_kt, jobs):
 
     jar34 = os.path.join(T["platforms"], "android-34", "android.jar")
     jar23 = os.path.join(T["platforms"], "android-23", "android.jar")
-    # -jvm-default=disable keeps interface bodies in DefaultImpls: dx cannot translate real
-    # default/static interface methods at minSdk 21 and API 21-23 devices cannot run them.
-    kotlinc = [T["kotlinc"], "-jvm-target", "1.8", "-jvm-default=disable",
+    # interface bodies must stay in DefaultImpls: dx/d8 cannot translate real default or static
+    # interface methods at minSdk 21, and API 21-23 devices could not run them anyway.
+    kotlinc = [T["kotlinc"], "-jvm-target", "1.8", jvm_default_flag(),
                "-Xlambdas=class", "-Xsam-conversions=class", "-nowarn"]
     if compat:
         # R lives only in the main pass, otherwise both outputs would define com.morsecode.app.R

@@ -57,7 +57,10 @@ class PlayerActivity : Activity() {
     private lateinit var titleLabel: android.widget.TextView
     private lateinit var subtitleLabel: android.widget.TextView
 
-    private val ticker: Runnable = runnable {
+    private lateinit var ticker: Runnable
+
+    /** One ticker drives both the video scrubber and the music progress bar. */
+    private fun tick() {
         if (videoMode) {
             if (video.isPlaying) {
                 scrub.progress = video.currentPosition
@@ -76,6 +79,7 @@ class PlayerActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         ThemeColors.applyTheme(this)
         super.onCreate(savedInstanceState)
+        ticker = runnable { tick() }
         val uri = intent.getStringExtra("uri")
         val mime = intent.getStringExtra("mime") ?: ""
         videoMode = mime.startsWith("video/")
