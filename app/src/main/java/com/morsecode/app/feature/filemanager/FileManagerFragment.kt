@@ -181,7 +181,8 @@ class FileManagerFragment(private val activity: Activity) : Screen {
             "Files: ${items.size} ${kind.name.lowercase()} item(s) from the media library" +
                 " (all=${lib.count(MediaLibrary.Category.ALL)}" +
                 " volumes=${Compat.externalVolumes(ctx).joinToString(",").ifEmpty { "none" }}" +
-                " full=${Compat.hasFullMediaAccess(ctx)} partial=${Compat.hasPartialMediaAccess(ctx)})"
+                " full=${Compat.hasFullMediaAccess(ctx)} partial=${Compat.hasPartialMediaAccess(ctx)}" +
+                " ${lib.lastNote})"
         )
         if (items.isEmpty()) {
             body.addView(emptyState())

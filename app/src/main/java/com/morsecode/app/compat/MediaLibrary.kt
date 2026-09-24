@@ -71,6 +71,15 @@ class MediaLibrary(private val ctx: Context) {
     @Volatile private var accepted = -1
 
     /**
+     * What the last query attempt actually did, in one line: which projection was accepted or
+     * rejected, and with what message. The screen shows this in its own log line, which is the only
+     * place the answer exists - a shell query runs with wider permissions than the app, so "the
+     * device holds rows" and "the app can read rows" are different statements.
+     */
+    @Volatile var lastNote: String = "no query yet"
+        private set
+
+    /**
      * INV-9 sort expression. MediaStore accepts it on every version this app targets; if a
      * particular OEM build rejects it we fall back to a plain `_ID DESC` and sort in memory.
      */
@@ -103,14 +112,23 @@ class MediaLibrary(private val ctx: Context) {
 
         try {
             cursor.use { c ->
-                if (offset > 0 && !c.moveToPosition(offset)) return out
+                // INV-10: no LIMIT/OFFSET in the query string - walk the cursor instead. The
+                // positioning is done before the loop on purpose: `do { read } while (moveToNext())`
+                // reads row -1 on an empty cursor, which turns "no rows" into a crash-shaped
+                // failure and hides the real answer.
+                val positioned = if (offset > 0) c.moveToPosition(offset) else c.moveToFirst()
+                if (!positioned) {
+                    lastNote = "$lastNote; page empty (offset=$offset)"
+                    return out
+                }
                 var read = 0
-                // INV-10: no LIMIT/OFFSET in the query string - walk the cursor instead.
-                do {
-                    if (limit > 0 && read >= limit) break
+                val cap = if (limit > 0) limit else Int.MAX_VALUE
+                while (read < cap) {
                     out.add(read(c))
                     read++
-                } while (c.moveToNext())
+                    if (!c.moveToNext()) break
+                }
+                lastNote = "$lastNote; page ${out.size} row(s) at offset $offset"
             }
         } catch (t: Throwable) {
             // A row that cannot be read is one row, not the screen: the rest of the page still is.
@@ -140,32 +158,46 @@ class MediaLibrary(private val ctx: Context) {
             }
         }
         var last: Throwable? = null
+        val rejected = StringBuilder()
         for (i in list.indices) {
             val (projection, sort) = list[i]
             try {
                 val c = ctx.contentResolver.query(uri, projection, selection, args, sort) ?: continue
-                if (accepted != i) {
-                    accepted = i
-                    if (i > 0) alog("Media query degraded to ${projection.size} columns (sort: $sort)")
+                accepted = i
+                lastNote = if (rejected.isEmpty()) {
+                    "query ok (${projection.size} columns, sort: $sort)"
+                } else {
+                    "query degraded to ${projection.size} columns after $rejected"
                 }
+                if (i > 0) alog("Media query degraded to ${projection.size} columns (sort: $sort)")
                 return c
             } catch (t: Throwable) {
                 last = t
+                if (rejected.isNotEmpty()) rejected.append(", ")
+                rejected.append("${projection.size}c/${sort.substringBefore(',')}=${t.message?.take(60)}")
                 alog("Media query rejected (${projection.size} columns, sort: $sort): ${t.message}")
             }
         }
-        throw last ?: IllegalStateException("MediaStore accepted no projection")
+        lastNote = "query failed: $rejected"
+        throw last ?: IllegalStateException("MediaStore accepted no query")
     }
 
-    /** The queries to try, richest first. INV-9's ordering is the first one. */
+    /**
+     * The queries to try, richest first. INV-9's ordering is the first one - date taken, then date
+     * modified, newest first - and it is only available when the device also has `DATE_TAKEN`.
+     *
+     * Every step below it drops one more thing the unified table may not have (per-type columns,
+     * `TITLE`, expressions in the sort) and ends at nothing but a column and a direction. The grid
+     * re-sorts in memory anyway, so a degraded ORDER BY costs nothing a user can see.
+     */
     private fun candidatesFor(category: Category): List<Pair<Array<String>, String>> {
-        val plainDateSort = "DATE_MODIFIED * 1000 DESC, _ID DESC"
-        val titleSort = "TITLE COLLATE NOCASE ASC"
+        val plainDateSort = "DATE_MODIFIED DESC, _ID DESC"
+        val nameSort = "DISPLAY_NAME COLLATE NOCASE ASC"
         val music = category == Category.MUSIC
         return listOf(
-            (coreProjection + optionalColumns) to (if (music) titleSort else dateSortExpression),
-            (coreProjection + optionalShapeColumns) to (if (music) titleSort else plainDateSort),
-            coreProjection to (if (music) "DISPLAY_NAME COLLATE NOCASE ASC" else plainDateSort),
+            (coreProjection + optionalColumns) to (if (music) "TITLE COLLATE NOCASE ASC" else dateSortExpression),
+            (coreProjection + optionalShapeColumns) to (if (music) nameSort else plainDateSort),
+            coreProjection to (if (music) nameSort else plainDateSort),
             coreProjection to "_ID DESC"
         )
     }
