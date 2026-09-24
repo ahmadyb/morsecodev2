@@ -169,8 +169,19 @@ if [ "$SEED_COUNT" -gt 0 ]; then
 else
   note "no seed media found in $SEED_DIR"
 fi
-COUNT=$(adb shell "content query --uri content://media/external/images/media --projection _id" 2>/dev/null | grep -c "_id" || true)
-note "media rows visible to MediaStore: ${COUNT:-0}"
+# MediaProvider finishes its post-boot scan asynchronously, and on some images it needs to be
+# asked; both are attempted, and the raw answer is reported so a failure here is diagnosable
+# instead of just a zero.
+sleep 15
+adb shell "content call --uri content://media/external/images/media --method scan_volume --arg external_primary" >/dev/null 2>&1 || true
+sleep 5
+RAW=$(adb shell "content query --uri content://media/external/images/media --projection _id,_display_name" 2>&1 | head -5)
+COUNT=$(printf '%s' "$RAW" | grep -c "_id" || true)
+note "MediaStore images: ${COUNT:-0} row(s)"
+if [ "${COUNT:-0}" = "0" ]; then
+  note "raw query answer: $(printf '%s' "$RAW" | tr '\n' ' ' | head -c 300)"
+  note "files on device: $(adb shell 'ls /sdcard/Pictures' 2>/dev/null | tr '\n' ' ' | head -c 200)"
+fi
 
 say "Cold start"
 adb shell am start -W -n "$ACTIVITY" > /tmp/am-start.txt 2>&1
