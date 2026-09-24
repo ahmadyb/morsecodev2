@@ -4,7 +4,6 @@ import android.app.Activity
 import android.content.Intent
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
-import android.view.GestureDetector
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -74,20 +73,25 @@ class OnboardingActivity : Activity() {
 
         setContentView(root)
 
-        val detector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-            override fun onFling(e1: MotionEvent, e2: MotionEvent, vx: Float, vy: Float): Boolean {
-                val dx = e2.x - e1.x
-                if (Math.abs(dx) < 90f) return false
-                if (dx < 0 && index < 3) index++
-                else if (dx > 0 && index > 0) index--
-                else return false
-                render()
-                return true
-            }
-        })
+        // Swipe handling is done by hand rather than through GestureDetector: the framework
+        // listener's parameter annotations differ between SDK releases and a plain
+        // OnTouchListener compiles identically against every API level.
         slides.setOnTouchListener(object : View.OnTouchListener {
+            private var downX = 0f
+
             override fun onTouch(v: View, event: MotionEvent): Boolean {
-                detector.onTouchEvent(event)
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> downX = event.x
+                    MotionEvent.ACTION_UP -> {
+                        val dx = event.x - downX
+                        if (Math.abs(dx) > 90f) {
+                            if (dx < 0 && index < 3) index++
+                            else if (dx > 0 && index > 0) index--
+                            else return true
+                            render()
+                        }
+                    }
+                }
                 return true
             }
         })

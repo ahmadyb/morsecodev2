@@ -118,6 +118,8 @@ jobs:
         if: steps.gradle.outputs.gradle_failed == 'true'
         run: |
           set -euo pipefail
+          # kotlinc's launcher script passes JAVA_OPTS to its JVM: the defaults OOM on this app.
+          export JAVA_OPTS="-Xmx3g -XX:MaxMetaspaceSize=768m"
           curl -fsSL --retry 3 -o /tmp/kotlin.zip \
             https://github.com/JetBrains/kotlin/releases/download/v1.9.24/kotlin-compiler-1.9.24.zip
           unzip -q /tmp/kotlin.zip -d /tmp/kotlin
@@ -153,7 +155,7 @@ jobs:
         run: |
           APK=$(ls out/MorseCode-*-release.apk | head -1)
           java -jar "$ANDROID_HOME/build-tools/34.0.0/lib/apksigner.jar" verify --print-certs "$APK"
-          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$APK" | head -3
+          "$ANDROID_HOME/build-tools/34.0.0/aapt2" dump badging "$APK" | head -3
 
       - name: Checksums
         run: |
