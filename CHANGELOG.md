@@ -16,6 +16,13 @@ the artifacts were built from.
   now tries progressively plainer queries (optional columns dropped, `DATE_TAKEN` ordering replaced
   by `DATE_MODIFIED * 1000`) and remembers the one the device accepted; the sort fallback for
   `TITLE`, which the unified table also lacks, comes along with it.
+- **An empty result and an unreadable row looked the same.** `MediaLibrary.page()` walked the
+  cursor with `do { read } while (moveToNext())`, which reads row -1 before asking whether there is
+  a row at all; on an empty cursor that threw `CursorIndexOutOfBoundsException`, was caught, and
+  returned an empty list, so "the query matched nothing" could not be told apart from "the row
+  could not be read". The cursor is positioned before the loop, and the library keeps a one-line
+  account of what its query ladder did, printed by the grid:
+  `query degraded to 12 columns after 13c/DATE_TAKEN=Invalid column DATE_TAKEN; page 3 row(s)`.
 - **The empty state no longer hides a failure.** The grid logs what it got and what the library
   holds, and the Files tab names Android 14's partial-access state ("Only the photos and videos you
   selected are visible") instead of looking like a phone with no photos.

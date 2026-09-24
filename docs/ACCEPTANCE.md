@@ -29,7 +29,7 @@ physical phones without a debugger. Ports used: **UDP 33457** (discovery), **TCP
 | 21 | Media paging (INV-10, INV-9) | Open Files with > 2 000 photos | Grid pages in without a `LIMIT/OFFSET` in the sort string; newest day first, day groups correct, no frozen scroll. |
 | 22 | Theme + accents | Settings → pick each of the 5 accents, toggle dark/light, apply a theme overlay | Every surface recolours immediately; dark = a-series mocks, light = b-series mocks; no clipped or invisible text. |
 | 23 | Diagnostics + release hygiene | Settings → Connection Doctor / Log viewer; then check the shipped artifacts | Doctor lists Wi-Fi / peers / multicast / Bluetooth / permissions / battery with colour lights; the log tails live, exports to .txt and filters errors. The release page carries a **signed** debug APK, release APK and `.aab`, all `minSdk 21`, `targetSdk 34`, `applicationId com.morsecode.app`. |
-| 24 | Launch gate (automated) | Any push or tag | `Build & Release` builds, installs the release APK on an Android 14 emulator, opens it, walks all four tabs and fails the run on a crash, an ANR or a dead process. The screenshots are committed to `docs/screenshots/`. A red gate means no release is published. |
+| 24 | Launch gate (automated) | Any push or tag | `Build & Release` builds, installs the release APK on an Android 14 emulator, opens it, walks all four tabs and fails the run on a crash, an ANR or a dead process. It seeds the device with three photos and fails if the Files grid reports 0 items while the library holds rows (or the screen says "No photos yet" with media present) — an empty grid that used to pass silently. The screenshots are committed to `docs/screenshots/`. A red gate means no release is published. |
 
 ## How to verify the artifacts
 
