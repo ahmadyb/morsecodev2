@@ -225,7 +225,7 @@ if ! app_alive; then
 fi
 
 # The first launch shows the 4-slide onboarding; back out of it to reach the shell.
-if adb shell dumpsys activity activities 2>/dev/null | grep -q "OnboardingActivity"; then
+if [[ "$(adb shell dumpsys activity activities 2>/dev/null)" == *OnboardingActivity* ]]; then
   ok "onboarding is showing on first launch"
   adb shell input keyevent 4 >/dev/null 2>&1
   sleep 3
@@ -255,7 +255,7 @@ note "images table row: $(printf '%s' "$ROW" | head -c 300)"
 note "device media dirs: $(adb shell 'ls /sdcard/Pictures /sdcard/DCIM 2>/dev/null' 2>/dev/null | tr '\n' ' ' | head -c 200)"
 # The app now logs its own library counts, so the app log above is the authoritative answer for
 # what it can see; shell queries are only here to show what the platform holds.
-if adb logcat -d -s "$LOGCAT_TAG":V 2>/dev/null | grep -q "Main resumed"; then
+if [[ "$(adb logcat -d -s "$LOGCAT_TAG":V 2>/dev/null)" == *"Main resumed"* ]]; then
   ok "MainActivity reached onResume"
 else
   bad "MainActivity never logged 'Main resumed'"
@@ -292,7 +292,11 @@ label_bounds() {
 screen_shows() {
   local ui
   ui=$(dump_ui) || return 1
-  printf '%s' "$ui" | grep -q "$1"
+  # Pattern matching, not `printf | grep -q`: under `set -o pipefail` a `grep -q` that matches
+  # early exits before the writer is done, the writer takes SIGPIPE, and the *pipeline* reports
+  # 141 - so a check like "does this page contain X" intermittently answers "no" for the biggest
+  # pages. Bash can match the string in memory without a pipe at all.
+  [[ "$ui" == *"$1"* ]]
 }
 
 for i in 0 1 2 3; do
@@ -408,7 +412,7 @@ else
   bad "no WebShare switch on the Connect tab"
 fi
 
-if adb logcat -d -s "$LOGCAT_TAG":V 2>/dev/null | grep -q "WebShare mode started"; then
+if [[ "$(adb logcat -d -s "$LOGCAT_TAG":V 2>/dev/null)" == *"WebShare mode started"* ]]; then
   ok "WebShare started"
   WS_STARTED=1
 else
@@ -426,9 +430,9 @@ if [ "$WS_STARTED" = "1" ]; then
   WAIT_CODE=$(printf '%s' "$WAIT_HTML" | tail -1)
   WAIT_HTML=$(printf '%s' "$WAIT_HTML" | sed '$d')
   WS_NOTE="$WS_NOTE waiting=$WAIT_CODE/${#WAIT_HTML}B"
-  if printf '%s' "$WAIT_HTML" | grep -q "Waiting for the phone to accept"; then
+  if [[ "$WAIT_HTML" == *"Waiting for the phone to accept"* ]]; then
     ok "an unconsented browser gets the waiting page"
-    if printf '%s' "$WAIT_HTML" | grep -q "data-nav=\"photos\""; then
+    if [[ "$WAIT_HTML" == *'data-nav="photos"'* ]]; then
       bad "an unconsented browser was served the file browser"
     fi
   else
@@ -488,21 +492,21 @@ if [ "$WS_STARTED" = "1" ]; then
   SPA_CODE=$(printf '%s' "$SPA" | tail -1)
   SPA=$(printf '%s' "$SPA" | sed '$d')
   WS_NOTE="$WS_NOTE spa=$SPA_CODE/${#SPA}B"
-  if printf '%s' "$SPA" | grep -q "data-nav=\"photos\""; then
+  if [[ "$SPA" == *'data-nav="photos"'* ]]; then
     ok "the consented browser gets the file browser"
-    if printf '%s' "$SPA" | grep -qi "data-nav=\"qr\"\|>QR<\|QR code"; then
+    if [[ "$SPA" == *'data-nav="qr"'* || "$SPA" == *'>QR<'* || "$SPA" == *"QR code"* ]]; then
       bad "the browser page mentions a QR code although WebShare shows none"
     else
       ok "the browser page has no QR"
     fi
     COUNTS=$(curl -s -m 10 http://127.0.0.1:33455/api/counts 2>/dev/null | head -c 200)
     note "browser counts: $COUNTS"
-    if printf '%s' "$COUNTS" | grep -q "photos"; then
+    if [[ "$COUNTS" == *photos* ]]; then
       ok "the browser can count the phone's media"
     else
       bad "the browser cannot read the media counts: $COUNTS"
     fi
-    if printf '%s' "$SPA" | grep -q "audio"; then
+    if [[ "$SPA" == *audio* ]]; then
       ok "the player is served with the browser"
     fi
   else
@@ -519,7 +523,7 @@ if [ "$WS_STARTED" = "1" ]; then
     if [ "$#" -ge 4 ]; then adb shell input tap "$(( ($1 + $3) / 2 ))" "$(( ($2 + $4) / 2 ))" >/dev/null 2>&1; fi
     sleep 2
   fi
-  if adb logcat -d -s "$LOGCAT_TAG":V 2>/dev/null | grep -q "WebShare stopped by user"; then
+  if [[ "$(adb logcat -d -s "$LOGCAT_TAG":V 2>/dev/null)" == *"WebShare stopped by user"* ]]; then
     ok "WebShare stops when the user stops it"
   else
     note "the Stop button was not found or did not log a stop"
@@ -540,7 +544,7 @@ shot after-back
 check "process alive after back" app_alive
 
 # A SIGSEGV in one of the JNI-less layers would show up as an ANR instead; both abort the run.
-if adb logcat -d 2>/dev/null | grep -qE "ANR in $PACKAGE"; then
+if [[ "$(adb logcat -d 2>/dev/null)" == *"ANR in $PACKAGE"* ]]; then
   bad "ANR reported for $PACKAGE"
   adb logcat -d 2>/dev/null | grep -A 20 "ANR in $PACKAGE" | sed 's/^/   /'
 else
