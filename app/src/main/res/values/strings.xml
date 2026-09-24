@@ -188,6 +188,8 @@
     <string name="empty_state_files_hint">Files you send and receive will be listed here.</string>
     <string name="storage_permission_needed">Storage permission is needed to read your files.</string>
     <string name="grant">Grant</string>
+    <string name="all_files_access">Allow all files access</string>
+    <string name="all_files_access_hint">Only needed to browse documents and other non-media folders.</string>
     <string name="n_items">%1$d items</string>
 
     <!--  viewers  -->

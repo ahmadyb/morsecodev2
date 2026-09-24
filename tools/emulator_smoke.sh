@@ -137,6 +137,20 @@ check "release APK installs" adb install -r -g "$RELEASE_APK"
 [ -n "$DEBUG_APK" ] && check "debug APK installs" adb install -r -g "$DEBUG_APK"
 adb logcat -c >/dev/null 2>&1 || true
 
+say "Seed the emulator with media"
+# Three tiny images so the Files tab exercises MediaStore paging, thumbnails and day grouping
+# instead of only its empty state. Best effort - a device that refuses the scan still runs the
+# assertions below, which are about the app.
+if [ -n "${MORSE_MEDIA_DIR:-}" ] && [ -d "$MORSE_MEDIA_DIR" ]; then
+  adb push "$MORSE_MEDIA_DIR/." /sdcard/Pictures/ >/dev/null 2>&1 || true
+fi
+for f in /sdcard/Pictures/*.png; do
+  adb shell "am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file://$f" >/dev/null 2>&1 || true
+done
+adb shell "content call --uri content://media/external/images/media --method scan_file --arg /sdcard/Pictures" >/dev/null 2>&1 || true
+COUNT=$(adb shell "content query --uri content://media/external/images/media --projection _id" 2>/dev/null | grep -c "_id" || true)
+note "media rows visible to MediaStore: ${COUNT:-0}"
+
 say "Cold start"
 adb shell am start -W -n "$ACTIVITY" > /tmp/am-start.txt 2>&1
 cat /tmp/am-start.txt | sed 's/^/   /'
@@ -193,10 +207,21 @@ LABELS=("Connect" "Files" "History" "Settings")
 
 # Prefer the real bounds of the nav label from the view hierarchy: tapping a fixed fraction of
 # the screen only works until the layout, the density or the system bar changes.
-label_bounds() {
+dump_ui() {
   adb shell uiautomator dump /sdcard/mc-ui.xml >/dev/null 2>&1 || return 1
-  adb shell cat /sdcard/mc-ui.xml 2>/dev/null | tr '>' '\n' \
+  adb shell cat /sdcard/mc-ui.xml 2>/dev/null
+}
+
+label_bounds() {
+  dump_ui | tr '>' '\n' \
     | grep "text=\"$1\"" | grep -o 'bounds="\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]"' | head -1
+}
+
+# Screen text is the cheapest assertion available on a real device, and it is what a user reads.
+screen_shows() {
+  local ui
+  ui=$(dump_ui) || return 1
+  printf '%s' "$ui" | grep -q "$1"
 }
 
 for i in 0 1 2 3; do
@@ -218,6 +243,26 @@ for i in 0 1 2 3; do
   sleep 3
   shot "tab-$((i + 1))-${TABS[$i]}"
   check "process alive on the ${TABS[$i]} tab" app_alive
+
+  if [ "${TABS[$i]}" = "files" ]; then
+    # Regression guard: permissions were granted at install time with `adb install -g`, so the
+    # Files tab must not claim it needs storage permission. It used to, because the gate asked for
+    # MANAGE_EXTERNAL_STORAGE instead of the READ_MEDIA_* grants Android 13 actually documents.
+    if screen_shows "Storage permission is needed"; then
+      bad "the Files tab asks for storage permission although it was granted at install"
+      dump_ui | tr '>' '\n' | grep -o 'text="[^"]*"' | sort -u | head -20 | sed 's/^/   /'
+    else
+      ok "the Files tab does not ask for storage permission"
+    fi
+    if screen_shows "Today"; then
+      note "the Files tab is rendering media"
+    else
+      note "the Files tab shows its empty state (no media on the device)"
+    fi
+    if screen_shows "Apps" && screen_shows "Documents"; then
+      ok "all five category tabs are present"
+    fi
+  fi
 done
 check "no crash from $PACKAGE after walking the tabs" no_fatal
 report_crashes

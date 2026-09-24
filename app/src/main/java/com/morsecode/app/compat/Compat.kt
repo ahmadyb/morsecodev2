@@ -189,6 +189,33 @@ object Compat {
         else -> true
     }
 
+    /** The runtime grants that open the media library from Android 13 onwards. */
+    private val MEDIA_GRANTS_33 = listOf(
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_AUDIO",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED"
+    )
+
+    /**
+     * Can the app read the media library? This is the capability the Files tab needs, and it is
+     * deliberately **not** [hasAllFilesAccess].
+     *
+     * From Android 13 the documented way in is the runtime `READ_MEDIA_*` family; all-files access
+     * is a separate, Play-restricted privilege for browsing *non*-media files. Using the second as
+     * the only gate made the Files tab announce "Storage permission is needed to read your files"
+     * on a phone where the media grants were already in place.
+     */
+    fun canReadMedia(ctx: Context): Boolean = when {
+        hasAllFilesAccess(ctx) -> true
+        isApi33 -> MEDIA_GRANTS_33.any { checkSelf(ctx, it) }
+        isApi23 -> checkSelf(ctx, android.Manifest.permission.READ_EXTERNAL_STORAGE)
+        else -> true
+    }
+
+    /** Android 11+ can hand out all-files access; older versions go through the app settings. */
+    fun allFilesSettingsAvailable(ctx: Context): Boolean = true
+
     fun isIgnoringBatteryOptimizations(ctx: Context): Boolean {
         if (!isApi23) return true
         val pm = ctx.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return true

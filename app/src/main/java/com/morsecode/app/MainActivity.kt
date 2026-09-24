@@ -97,7 +97,9 @@ class MainActivity : Activity() {
         if (Compat.isApi33 && !Permissions.granted(this, Permissions.notifications())) {
             Permissions.request(this, Permissions.notifications(), Permissions.REQ_NOTIFICATIONS)
         }
-        if (!Compat.hasAllFilesAccess(this)) {
+        // Ask for the runtime media grants, not all-files access: since Android 13 that is what
+        // reading the library needs, and it is a permission users can actually grant in one tap.
+        if (!Compat.canReadMedia(this)) {
             Permissions.request(this, Permissions.storage(this), Permissions.REQ_STORAGE)
         }
     }

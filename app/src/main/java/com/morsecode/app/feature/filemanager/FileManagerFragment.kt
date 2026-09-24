@@ -25,6 +25,7 @@ import com.morsecode.app.core.ui.pad
 import com.morsecode.app.core.util.Compat
 import com.morsecode.app.core.util.D
 import com.morsecode.app.core.util.Fmt
+import com.morsecode.app.core.util.Permissions
 import com.morsecode.app.core.storage.SafStore
 import com.morsecode.app.core.storage.ShareUris
 import com.morsecode.app.di.Di
@@ -201,17 +202,38 @@ class FileManagerFragment(private val activity: Activity) : Screen {
         }
     }
 
+    /**
+     * "Nothing here" plus, only when it is actually true, a way to grant access.
+     *
+     * The gate is [Compat.canReadMedia] - the runtime media grants the platform documents - and
+     * not all-files access. All-files is still offered, as a second button, because reading
+     * non-media documents on Android 11+ needs it; asking for it as the *first* step is what made
+     * this screen claim permission was missing when everything needed was already granted.
+     */
     private fun emptyState(): View {
         val ctx = activity
+        val readable = Compat.canReadMedia(ctx)
         val col = W.emptyState(ctx, R.drawable.ic_nav_files, emptyText(),
-            if (Compat.hasAllFilesAccess(ctx)) null else ctx.getString(R.string.storage_permission_needed))
-        if (!Compat.hasAllFilesAccess(ctx)) {
-            col.addView(W.gap(ctx, 8))
-            val grant = W.outlineButton(ctx, ctx.getString(R.string.grant))
-            grant.onClick {
+            if (readable) null else ctx.getString(R.string.storage_permission_needed))
+        if (readable) return col
+
+        col.addView(W.gap(ctx, 8))
+        val grant = W.accentButton(ctx, ctx.getString(R.string.grant))
+        grant.onClick {
+            val wanted = Permissions.storage(activity)
+            if (Compat.isApi23 && wanted.isNotEmpty()) {
+                Permissions.request(activity, wanted, Permissions.REQ_STORAGE)
+            } else {
                 Compat.openAllFilesSettings(activity)
             }
-            col.addView(grant)
+        }
+        col.addView(grant)
+
+        if (Compat.isApi30) {
+            col.addView(W.gap(ctx, 6))
+            val allFiles = W.outlineButton(ctx, ctx.getString(R.string.all_files_access))
+            allFiles.onClick { Compat.openAllFilesSettings(activity) }
+            col.addView(allFiles)
         }
         return col
     }

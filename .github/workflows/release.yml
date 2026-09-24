@@ -308,7 +308,9 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           # wrapped in bash because the action runs `script` through /bin/sh
-          script: bash tools/ci_smoke.sh "${{ needs.build.outputs.version }}"
+          script: |
+            export MORSE_MEDIA_DIR="$PWD/tools/media-seed"
+            bash tools/ci_smoke.sh "${{ needs.build.outputs.version }}"
 
       - name: Upload emulator screenshots
         if: always()
