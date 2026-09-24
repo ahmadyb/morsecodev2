@@ -201,6 +201,64 @@ jobs:
           path: out/*
           if-no-files-found: error
 
+  offline:
+    name: Gradle-free build (offline toolchain)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        run: |
+          set -euo pipefail
+          SDK="$RUNNER_TEMP/android-sdk"
+          mkdir -p "$SDK/cmdline-tools"
+          curl -fsSL -o "$RUNNER_TEMP/cmdline-tools.zip" \
+            https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q "$RUNNER_TEMP/cmdline-tools.zip" -d "$RUNNER_TEMP/cmdline-tools"
+          mv "$RUNNER_TEMP/cmdline-tools/cmdline-tools" "$SDK/cmdline-tools/latest"
+          export PATH="$SDK/cmdline-tools/latest/bin:$PATH"
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager --install "platforms;android-23" "platforms;android-34" \
+            "build-tools;$ANDROID_BUILD_TOOLS" >/dev/null
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+
+      - name: Fetch the Kotlin compiler
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/kotlin.zip \
+            https://github.com/JetBrains/kotlin/releases/download/v1.9.24/kotlin-compiler-1.9.24.zip
+          unzip -q /tmp/kotlin.zip -d /tmp
+          echo "KOTLINC=/tmp/kotlinc/bin/kotlinc" >> "$GITHUB_ENV"
+
+      # This is the path the README tells a local build to use, and it was silently producing an
+      # APK without the Kotlin runtime. Building it on every push keeps it honest; the dependency
+      # check inside the script fails the job if the runtime is ever missing again.
+      - name: Build with tools/offline_build.py
+        run: |
+          export JAVA_OPTS="-Xmx3g -XX:MaxMetaspaceSize=768m"
+          python3 tools/offline_build.py
+
+      - name: Re-check the produced APKs
+        run: |
+          for apk in dist/*.apk; do
+            python3 tools/dexcheck.py "$apk"
+          done
+
+      - name: Upload the offline build
+        uses: actions/upload-artifact@v4
+        with:
+          name: MorseCode-offline-build
+          path: dist/*
+          if-no-files-found: error
+
   smoke:
     name: Install and drive the app on an emulator
     needs: build

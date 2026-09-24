@@ -26,6 +26,17 @@ CI builds and validates every commit; `tools/offline_build.py` reproduces the sa
 without Gradle or Maven, and Gradle is the third path. The published artifacts are the ones on the
 releases page — `dist/` is only ever a local scratch directory.
 
+### Why the APK is small
+
+~1 MB, against 4–8 MB for a comparable app. There is no AndroidX, no Material Components and no
+Compose: every screen, sheet, radar animation and the browser SPA is built on platform APIs, and
+the dex holds 442 classes of application code plus the Kotlin runtime. `tools/dexcheck.py` prints
+exactly what is inside, and fails the build if anything the app calls is missing:
+
+```bash
+python3 tools/dexcheck.py dist/MorseCode-1.0.1-release.apk
+```
+
 ### 1. Offline script (no network, no Gradle, no Android Studio required)
 
 ```bash
@@ -35,7 +46,10 @@ python3 tools/offline_build.py --skip-aab # APKs only, faster
 
 The script drives `aapt2 → kotlinc → dx → zipalign → apksigner` from local toolchains and creates
 the keystores on first run. It is the build of record for this repository because it runs in
-sandboxes with no access to Maven or the Gradle distribution.
+sandboxes with no access to Maven or the Gradle distribution, and it dexes the Kotlin standard
+library that ships with kotlinc — a previous version of this script left the runtime out, so the
+APKs it produced died on launch even though the build was green. The script now verifies its own
+output with `tools/dexcheck.py`, and CI builds it on every push so the path cannot rot again.
 
 ### 1b. Resource-only check (seconds, no Kotlin compiler needed)
 

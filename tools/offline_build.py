@@ -342,6 +342,25 @@ def jvm_default_flag():
     return "-Xjvm-default=disable"
 
 
+def kotlin_runtime_jars(T):
+    """
+    The Kotlin standard library that ships with kotlinc, plus the annotations jar next to it.
+
+    These have to be dexed into the APK: the compiler emits real calls into `kotlin.collections.*`,
+    `kotlin.Result` and `kotlin.jvm.internal.Intrinsics`, so a build that compiles the sources but
+    leaves the runtime out produces an APK that dies with NoClassDefFoundError on launch - which is
+    exactly what the first artifacts did. tools/dexcheck.py now fails the build if it ever happens
+    again.
+    """
+    lib = os.path.join(os.path.dirname(os.path.dirname(T["kotlinc"])), "lib")
+    jars = []
+    for name in ("kotlin-stdlib.jar", "kotlin-stdlib-common.jar", "annotations-13.0.jar"):
+        candidate = os.path.join(lib, name)
+        if os.path.exists(candidate):
+            jars.append(candidate)
+    return jars
+
+
 def stage_kotlin(sh, T, r_kt, jobs):
     """Compile compat sources (API 34) then everything else (API 23 - compile-time
     enforcement that the app only uses APIs that exist on Android 6)."""
@@ -371,8 +390,14 @@ def stage_dex(sh, T, class_dirs):
     out = os.path.join(BUILD, "classes.dex")
     if os.path.exists(out):
         os.remove(out)
+    runtime = kotlin_runtime_jars(T)
+    if not runtime:
+        sys.exit("error: no kotlin-stdlib.jar next to %s - the APK would be missing the Kotlin "
+                 "runtime (see kotlin_runtime_jars)" % T["kotlinc"])
+    for jar in runtime:
+        print("    dexing %s" % os.path.basename(jar))
     sh.run(
-        dexer_cmd(T, out) + class_dirs,
+        dexer_cmd(T, out) + class_dirs + runtime,
         quiet=True,
     )
     return out
@@ -608,6 +633,30 @@ def main():
     if not args.skip_aab:
         aab = os.path.join(args.dist, "MorseCode-%s.aab" % VERSION_NAME)
         stage_aab(sh, T, proto_apk, dex, aab)
+    # Fail here rather than on a phone: a build that compiles but leaves the Kotlin runtime out
+    # produces an APK that dies with NoClassDefFoundError on the first frame.
+    print("[check] runtime dependencies")
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import dexcheck  # noqa: E402
+
+    jar = os.path.join(T["platforms"], "android-34", "android.jar")
+    checked = 0
+    for fn in sorted(os.listdir(args.dist)):
+        if not fn.endswith(".apk"):
+            continue
+        path = os.path.join(args.dist, fn)
+        defined, missing = dexcheck.check(path, jar)
+        if missing:
+            print("    %s: %d classes defined, MISSING %d" % (fn, defined, len(missing)))
+            for package, count in dexcheck.summarise(missing):
+                print("       %-42s %d reference(s)" % (package, count))
+            sys.exit("error: %s references %d class(es) that are not bundled and not part of the "
+                     "Android platform - see tools/dexcheck.py" % (fn, len(missing)))
+        print("    %s: %d classes defined, every referenced class provided" % (fn, defined))
+        checked += 1
+    if not checked:
+        sys.exit("error: no APK was produced in %s" % args.dist)
+
     print("\nArtifacts in %s:" % args.dist)
     for fn in sorted(os.listdir(args.dist)):
         p = os.path.join(args.dist, fn)

@@ -17,6 +17,14 @@ the artifacts were built from.
   `MorseCode` tag, so `adb logcat -s MorseCode` shows the same trail as the in-app Log viewer and a
   bug report can say which screen was reached before a crash.
 
+### Fixed
+- **The offline build produced APKs that could not run.** `tools/offline_build.py` compiled the
+  Kotlin sources but never dexed the Kotlin standard library, so the APK called into
+  `kotlin.collections.*`, `kotlin.Result` and `kotlin.jvm.internal.Intrinsics` 101 times with
+  nothing behind them — `NoClassDefFoundError` on launch. The runtime jars next to kotlinc are now
+  dexed in, and `tools/dexcheck.py` (new) fails the build when any referenced class is neither
+  bundled nor part of the platform. CI builds this path on every push to keep it working.
+
 ### Added
 - **Emulator gate.** `tools/emulator_smoke.sh` installs the release APK on an API 34 emulator,
   opens it, walks all four tabs and fails on a crash, an ANR or a dead process. The `release.yml`
