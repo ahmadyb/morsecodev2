@@ -371,6 +371,11 @@ ERR_TAIL=$(adb logcat -d -s "$LOGCAT_TAG":V 2>/dev/null | grep -iE "fail|error|d
 # the phone's port on the runner's loopback, so the test speaks to the phone exactly as a laptop
 # on the same Wi-Fi would - waiting page first, until the phone holder accepts, then the app.
 say "WebShare end to end"
+# The browser surface is one of the four things this app is, and "it started" is not the same as
+# "a browser can use it". The emulator's network is enough to prove both: `adb forward` puts the
+# phone's port on the runner's loopback, so the test speaks to the phone exactly as a laptop on the
+# same Wi-Fi would. The order matters and is the product's own: `/` always answers with the waiting
+# page, that page polls `/api/consent`, and only then does the phone ask.
 WS_STARTED=0
 
 # Back to Connect and flip the WebShare switch. The switch is found in the hierarchy rather than
@@ -412,44 +417,64 @@ if [ "$WS_STARTED" = "1" ]; then
 
   # 1. Before consent the browser must not see the phone's files - only the waiting page.
   WAIT_HTML=$(curl -s -m 10 http://127.0.0.1:33455/ 2>/dev/null)
-  if [ -z "$WAIT_HTML" ]; then
-    bad "nothing answered on the WebShare port"
-  elif printf '%s' "$WAIT_HTML" | grep -qi "accept\|waiting\|pending"; then
+  if printf '%s' "$WAIT_HTML" | grep -q "Waiting for the phone to accept"; then
     ok "an unconsented browser gets the waiting page"
+    if printf '%s' "$WAIT_HTML" | grep -q "data-nav=\"photos\""; then
+      bad "an unconsented browser was served the file browser"
+    fi
   else
-    bad "an unconsented browser got the app instead of the waiting page"
+    bad "an unconsented browser did not get the waiting page"
   fi
 
-  # 2. The phone asks. Accept it the way a person would: tap the button by name.
+  # 2. The waiting page polls /api/consent; that request is what makes the phone ask. It blocks
+  #    until the phone answers, so it runs in the background while the dialog is driven.
+  curl -s -m 40 http://127.0.0.1:33455/api/consent -o /tmp/consent.json 2>/dev/null &
+  CONSENT_PID=$!
+  sleep 4
+
   # The copy is pinned by the spec, and the popup spent a while showing two bare buttons because
   # the button row was set as the dialog's content view, replacing the card that held the words.
   if screen_shows "Browser wants access"; then
-    ok "the consent popup shows the exact copy"
+    ok "the phone asks 'Browser wants access'"
     if screen_shows "A browser session wants to browse your phone."; then
       ok "the consent popup shows the exact body line"
     else
       bad "the consent popup is missing its body line"
     fi
-  else
-    bad "no 'Browser wants access' copy on screen while a browser session waits"
-  fi
-  CONSENT=$(label_bounds "Accept" || true)
-  if [ -n "$CONSENT" ]; then
-    set -- $(printf '%s' "$CONSENT" | grep -o '[0-9]*')
-    if [ "$#" -ge 4 ]; then
-      ok "the phone asked 'Browser wants access'"
-      adb shell input tap "$(( ($1 + $3) / 2 ))" "$(( ($2 + $4) / 2 ))" >/dev/null 2>&1
-      sleep 3
+    ACCEPT=$(label_bounds "Accept" || true)
+    if [ -n "$ACCEPT" ]; then
+      set -- $(printf '%s' "$ACCEPT" | grep -o '[0-9]*')
+      if [ "$#" -ge 4 ]; then
+        adb shell input tap "$(( ($1 + $3) / 2 ))" "$(( ($2 + $4) / 2 ))" >/dev/null 2>&1
+        ok "tapped Accept"
+      fi
+    else
+      # A dialog is its own window; if the dump did not see the button, the keyboard route still
+      # reaches it (TAB focuses the button pair, ENTER activates).
+      note "no Accept bounds in the dump - using TAB/ENTER"
+      adb shell input keyevent 61 >/dev/null 2>&1
+      adb shell input keyevent 61 >/dev/null 2>&1
+      adb shell input keyevent 66 >/dev/null 2>&1
     fi
+    shot web-share-consent
   else
-    bad "no 'Browser wants access' consent appeared for the browser session"
+    bad "the phone never asked for consent while a browser session polled for it"
+    note "app log: $(adb logcat -d -s "$LOGCAT_TAG":V 2>/dev/null | grep -i "browser" | tail -2 | tr '\n' ' ')"
+  fi
+
+  wait "$CONSENT_PID" 2>/dev/null
+  note "consent answer: $(head -c 120 /tmp/consent.json 2>/dev/null)"
+  if grep -q '"granted":true' /tmp/consent.json 2>/dev/null; then
+    ok "the session was granted"
+  else
+    bad "the consent answer was not a grant: $(head -c 120 /tmp/consent.json 2>/dev/null)"
   fi
 
   # 3. Now the browser gets the real app, and it carries no QR code (product decision).
   SPA=$(curl -s -m 15 http://127.0.0.1:33455/ 2>/dev/null)
   if printf '%s' "$SPA" | grep -q "data-nav=\"photos\""; then
     ok "the consented browser gets the file browser"
-    if printf '%s' "$SPA" | grep -qi "data-nav=\"qr\"\|>QR<\|qr code"; then
+    if printf '%s' "$SPA" | grep -qi "data-nav=\"qr\"\|>QR<\|QR code"; then
       bad "the browser page mentions a QR code although WebShare shows none"
     else
       ok "the browser page has no QR"
@@ -461,7 +486,6 @@ if [ "$WS_STARTED" = "1" ]; then
     else
       bad "the browser cannot read the media counts: $COUNTS"
     fi
-    # INV-5: a music player that survives navigation is served as part of the same document.
     if printf '%s' "$SPA" | grep -q "audio"; then
       ok "the player is served with the browser"
     fi
@@ -471,8 +495,7 @@ if [ "$WS_STARTED" = "1" ]; then
   fi
   shot web-share-served
 
-  # 4. Stop it, from the phone, and confirm the port closes (no idle teardown, INV-4, but an
-  #    explicit one that works).
+  # 4. Stop it from the phone and confirm the explicit stop works (INV-4 says nothing else stops it).
   STOP=$(label_bounds "Stop WebShare" || true)
   if [ -n "$STOP" ]; then
     set -- $(printf '%s' "$STOP" | grep -o '[0-9]*')
