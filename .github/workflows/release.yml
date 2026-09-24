@@ -87,26 +87,56 @@ jobs:
       # ---------------------------------------------------------------- primary build
       - name: Build with Gradle (debug APK, release APK, AAB)
         id: gradle
-        continue-on-error: true
         run: |
+          # Failures are surfaced as annotations (readable through the API) and handed to the
+          # fallback build instead of ending the job here.
+          annotate() {
+            grep -aE "^e: |error:|Unresolved|FAILURE:|What went wrong|Execution failed|Could not (resolve|find|download)|> Task .*FAILED" "$1" \
+              | tail -40 | while IFS= read -r line; do
+                  line="${line//$'\r'/}"
+                  echo "::error title=gradle::${line:0:800}"
+                done
+          }
+          set +e
           gradle --no-daemon --stacktrace \
-            :app:assembleDebug :app:assembleRelease :app:bundleRelease
+            :app:assembleDebug :app:assembleRelease :app:bundleRelease 2>&1 | tee /tmp/gradle.log
+          status=${PIPESTATUS[0]}
+          echo "---- last 25 lines ----"
+          tail -25 /tmp/gradle.log
+          if [ "$status" -ne 0 ]; then
+            annotate /tmp/gradle.log
+            echo "gradle_failed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "gradle_failed=false" >> "$GITHUB_OUTPUT"
+          fi
+          exit 0
 
       # ---------------------------------------------------------------- fallback build
       # The Gradle path needs the Android Gradle Plugin from Google Maven. If that is
       # unreachable, the repository's own Gradle-free toolchain builds the same three files.
       - name: Build with the offline toolchain (fallback)
-        if: steps.gradle.outcome == 'failure'
+        if: steps.gradle.outputs.gradle_failed == 'true'
         run: |
-          curl -fsSL -o /tmp/kotlin.zip \
+          set -euo pipefail
+          curl -fsSL --retry 3 -o /tmp/kotlin.zip \
             https://github.com/JetBrains/kotlin/releases/download/v1.9.24/kotlin-compiler-1.9.24.zip
           unzip -q /tmp/kotlin.zip -d /tmp/kotlin
+          chmod +x /tmp/kotlin/kotlinc/bin/*
+          set +e
           python3 tools/offline_build.py \
             --jdk "$JAVA_HOME" \
             --kotlinc /tmp/kotlin/kotlinc/bin/kotlinc \
             --build-tools "$ANDROID_HOME/build-tools/34.0.0" \
             --aapt2 "$ANDROID_HOME/build-tools/34.0.0/aapt2" \
-            --platforms "$ANDROID_HOME/platforms"
+            --platforms "$ANDROID_HOME/platforms" 2>&1 | tee /tmp/offline.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            tail -40 /tmp/offline.log | while IFS= read -r line; do
+              line="${line//$'\r'/}"
+              echo "::error title=offline-build::${line:0:800}"
+            done
+            exit 1
+          fi
 
       - name: Collect artifacts
         run: |
