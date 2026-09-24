@@ -437,9 +437,10 @@ def sanitise_jar(path, dest_dir):
 
 
 def stage_dex(sh, T, class_dirs):
-    out = os.path.join(BUILD, "classes.dex")
-    if os.path.exists(out):
-        os.remove(out)
+    """Dex the app plus the Kotlin runtime; returns [classes.dex, classes2.dex, ...]."""
+    out_dir = os.path.join(BUILD, "dex")
+    shutil.rmtree(out_dir, ignore_errors=True)
+    os.makedirs(out_dir, exist_ok=True)
     jars = kotlin_runtime_jars(T)
     if not jars:
         sys.exit("error: no kotlin-stdlib.jar next to %s - the APK would be missing the Kotlin "
@@ -453,18 +454,31 @@ def stage_dex(sh, T, class_dirs):
         print("    dexing %s (%d entries)" % (os.path.basename(jar), kept))
         runtime.append(clean)
     sh.run(
-        dexer_cmd(T, out) + class_dirs + runtime,
+        dexer_cmd(T, out_dir) + class_dirs + runtime,
         quiet=True,
     )
-    return out
+    dexs = sorted(
+        (os.path.join(out_dir, f) for f in os.listdir(out_dir) if f.endswith(".dex")),
+        key=lambda p: (len(os.path.basename(p)), os.path.basename(p)),
+    )
+    if not dexs or os.path.basename(dexs[0]) != "classes.dex":
+        sys.exit("error: the dexer produced no classes.dex in %s (got %s)"
+                 % (out_dir, os.listdir(out_dir)))
+    print("    %d dex file(s): %s" % (len(dexs), ", ".join(os.path.basename(d) for d in dexs)))
+    return dexs
 
 
-def dexer_cmd(T, out):
+def dexer_cmd(T, out_dir):
     """
-    Picks a dexer from the build-tools the machine actually has.
+    Picks a dexer from the build-tools the machine actually has and writes into `out_dir`.
 
-    build-tools <= 30 ship dx.jar; newer ones ship d8 (a D8 shell script plus d8.jar). Both
-    accept --min-sdk-version, so the only real difference is the entry point.
+    build-tools <= 30 ship dx.jar; newer ones ship d8 (a D8 shell script plus d8.jar). Two traps,
+    both hit in CI:
+
+      * d8 refuses a `.dex` filename as its output ("Output must be a .zip or .jar archive or an
+        existing directory"); dx accepts one. Asking both for a directory output sidesteps it.
+      * the app plus the Kotlin runtime is more than one dex' worth of methods, so multidex has to
+        be on. API 21+ loads classes2.dex natively, which is exactly our minSdk.
     """
     requested = os.environ.get("MC_DEXER", "").lower()
     dx_jar = os.path.join(T["build_tools"], "lib", "dx.jar")
@@ -476,18 +490,18 @@ def dexer_cmd(T, out):
             sys.exit("error: MC_DEXER=dx but %s does not exist" % dx_jar)
         return [
             T["java"], "-cp", dx_jar, "com.android.dx.command.Main",
-            "--dex", "--min-sdk-version=" + MIN_SDK, "--output=" + out,
+            "--dex", "--multi-dex", "--min-sdk-version=" + MIN_SDK, "--output=" + out_dir,
         ]
     if os.path.exists(d8_jar):
         return [
             T["java"], "-cp", d8_jar, "com.android.tools.r8.D8",
             "--min-api", MIN_SDK,
             "--lib", os.path.join(T["platforms"], "android-34", "android.jar"),
-            "--output", out,
+            "--output", out_dir,
         ]
     if os.path.exists(d8_script):
         return [
-            d8_script, "--min-api", MIN_SDK, "--output", out,
+            d8_script, "--min-api", MIN_SDK, "--output", out_dir,
         ]
     sys.exit(
         "error: no dexer found in %s (looked for lib/dx.jar, lib/d8.jar, d8).\n"
@@ -527,11 +541,12 @@ def ensure_keystore(sh, T, path, alias, passwd, cn):
     print("    created keystore %s" % os.path.basename(path))
 
 
-def stage_apk(sh, T, base_apk, dex, out_apk, keystore, alias, passwd):
+def stage_apk(sh, T, base_apk, dexs, out_apk, keystore, alias, passwd):
     unsigned = out_apk + ".unsigned"
     shutil.copyfile(base_apk, unsigned)
     with zipfile.ZipFile(unsigned, "a", zipfile.ZIP_DEFLATED) as zf:
-        zf.write(dex, "classes.dex")
+        for index, dex in enumerate(dexs):
+            zf.write(dex, "classes.dex" if index == 0 else "classes%d.dex" % (index + 1))
         for src, prefix in ADDITIONAL_ZIP_ENTRIES:
             if os.path.isdir(src):
                 zip_add_tree(zf, src, prefix)
@@ -592,7 +607,7 @@ def bundle_config_pb():
     bundletool = pb_str(1, "1.15.6")            # Bundletool.version
     optimizations = b""                          # Optimizations - all defaults
     compression = b""
-    for glob in ("**/classes.dex", "**/*.resources.pb"):
+    for glob in ("**/classes*.dex", "**/*.resources.pb"):
         compression += pb_str(1, glob)           # Compression.uncompressed_glob
     return (
         pb_str(1, bundletool)                    # BundleConfig.bundletool
@@ -601,7 +616,7 @@ def bundle_config_pb():
     )
 
 
-def stage_aab(sh, T, proto_apk, dex, out_aab):
+def stage_aab(sh, T, proto_apk, dexs, out_aab):
     entries = []
     with zipfile.ZipFile(proto_apk) as zf:
         for name in zf.namelist():
@@ -611,8 +626,10 @@ def stage_aab(sh, T, proto_apk, dex, out_aab):
                 entries.append(("base/resources.pb", zf.read(name)))
             elif name.startswith("res/"):
                 entries.append(("base/" + name, zf.read(name)))
-    with open(dex, "rb") as fh:
-        entries.append(("base/dex/classes.dex", fh.read()))
+    for index, dex in enumerate(dexs):
+        name = "classes.dex" if index == 0 else "classes%d.dex" % (index + 1)
+        with open(dex, "rb") as fh:
+            entries.append(("base/dex/" + name, fh.read()))
     for src, prefix in ADDITIONAL_ZIP_ENTRIES:
         if os.path.isdir(src):
             for dirpath, _dirnames, filenames in os.walk(src):
@@ -675,7 +692,7 @@ def main():
     gen_r_kt(r_txt, r_kt)
     class_dirs = stage_kotlin(sh, T, r_kt, None)
     print("[4/6] dex")
-    dex = stage_dex(sh, T, class_dirs)
+    dexs = stage_dex(sh, T, class_dirs)
     print("[5/6] package + sign APKs")
     ensure_keystore(sh, T, args.keystore, args.ks_alias, args.ks_pass,
                     "CN=MorseCode Release,O=MorseCode,C=NG")
@@ -683,12 +700,12 @@ def main():
                     "CN=Android Debug,O=Android,C=US")
     rel = os.path.join(args.dist, "MorseCode-%s-release.apk" % VERSION_NAME)
     dbg = os.path.join(args.dist, "MorseCode-%s-debug.apk" % VERSION_NAME)
-    stage_apk(sh, T, base_apk, dex, rel, args.keystore, args.ks_alias, args.ks_pass)
-    stage_apk(sh, T, base_apk, dex, dbg, args.debug_keystore, "androiddebugkey", "android")
+    stage_apk(sh, T, base_apk, dexs, rel, args.keystore, args.ks_alias, args.ks_pass)
+    stage_apk(sh, T, base_apk, dexs, dbg, args.debug_keystore, "androiddebugkey", "android")
     print("[6/6] Android App Bundle")
     if not args.skip_aab:
         aab = os.path.join(args.dist, "MorseCode-%s.aab" % VERSION_NAME)
-        stage_aab(sh, T, proto_apk, dex, aab)
+        stage_aab(sh, T, proto_apk, dexs, aab)
     # Fail here rather than on a phone: a build that compiles but leaves the Kotlin runtime out
     # produces an APK that dies with NoClassDefFoundError on the first frame.
     print("[check] runtime dependencies")
