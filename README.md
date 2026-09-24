@@ -40,7 +40,9 @@ gradle bundleRelease          # app/build/outputs/bundle/release/
 
 Gradle 8.7+, JDK 17, Android SDK with build-tools 34 + platform 34. `settings.gradle.kts` and the
 root `build.gradle.kts` pin AGP 8.5.2 / Kotlin 1.9.24. `gradle wrapper` regenerates `gradlew` if
-you want a wrapper in your fork.
+you want a wrapper in your fork. The Gradle debug build carries the `.debug` application-id suffix
+(standard AGP behaviour, installs side by side); the offline script keeps the plain
+`com.morsecode.app` id for both APKs.
 
 ### 3. CI
 

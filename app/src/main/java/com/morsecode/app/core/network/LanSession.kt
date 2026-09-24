@@ -361,8 +361,9 @@ class StreamSession(
 
     private fun openSource(uri: String, offset: Long): InputStream? = try {
         val parsed = Uri.parse(uri)
-        val raw = if (parsed.scheme == "file") {
-            File(parsed.path!!).inputStream()
+        val path = parsed.path
+        val raw = if (parsed.scheme == "file" && path != null) {
+            File(path).inputStream()
         } else {
             ctx.contentResolver.openInputStream(parsed)
         }
@@ -460,8 +461,9 @@ class StreamSession(
             target.error = t.message ?: "Transfer failed"
             Log.error("Data connection failed for ${target.item.displayName}: ${target.error}")
             // The sender is told the moment the data socket dies.
-            sendRaw(Wire.doneFail(fileId, target.error!!))
-            host.onItemState(this, target.item, ItemState.FAILED, target.error)
+            val reason = target.error ?: "Transfer failed"
+            sendRaw(Wire.doneFail(fileId, reason))
+            host.onItemState(this, target.item, ItemState.FAILED, reason)
         } finally {
             try { socket.close() } catch (ignored: Throwable) {}
         }

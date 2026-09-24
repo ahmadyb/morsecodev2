@@ -572,12 +572,14 @@ class TransferEngine(private val ctx: Context) : SessionHost {
                 }
                 if (next == null) {
                     // Release a Broadcast slot once this peer has nothing left to stream.
-                    if (heldGroup != null && items.value.none {
-                            it.groupId == heldGroup && it.peerId == session.peerId &&
+                    val held = heldGroup
+                    if (held != null && items.value.none {
+                            it.groupId == held && it.peerId == session.peerId &&
                                 (it.state == ItemState.QUEUED || it.state == ItemState.IN_PROGRESS)
                         }
                     ) {
-                        releaseSlot(heldGroup!!)
+                        releaseSlot(held)
+                        heldGroup = null
                     }
                     idleTicks++
                     if (idleTicks > 240) return   // ~60 s idle: park the worker, the session stays up
@@ -691,7 +693,8 @@ class TransferEngine(private val ctx: Context) : SessionHost {
             if (shaCache.containsKey(key)) return shaCache[key]
             val sha = try {
                 val uri = Uri.parse(item.uri)
-                val input = if (uri.scheme == "file") java.io.File(uri.path!!).inputStream()
+                val path = uri.path
+                val input = if (uri.scheme == "file" && path != null) java.io.File(path).inputStream()
                 else ctx.contentResolver.openInputStream(uri)
                 input?.use { Integrity.sha256(it) }
             } catch (t: Throwable) {
