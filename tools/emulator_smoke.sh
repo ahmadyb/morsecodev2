@@ -226,18 +226,12 @@ GRANTS=$(adb shell "dumpsys package $PACKAGE" 2>/dev/null | grep -E "READ_MEDIA|
 note "granted media permissions: $(printf '%s' "$GRANTS" | tr '\n' ' ')"
 # `content` wants colon-separated columns, and the row's own fields (mime, size) are what decide
 # whether the app's `mime_type LIKE 'image/%' AND _size > 0` filter can even match.
-ROW=$(adb shell "content query --uri content://media/external/images/media --projection _id:_display_name:_mime_type:_size" 2>&1 | head -3 | tr '\n' ' ')
+# `content` takes colon-separated columns and the *table's* own names (mime_type, _size).
+ROW=$(adb shell "content query --uri content://media/external/images/media --projection _id:mime_type:_size" 2>&1 | head -3 | tr '\n' ' ')
 note "images table row: $(printf '%s' "$ROW" | head -c 300)"
-
-if app_alive; then
-  note "app is running; the query below runs as the app's own uid"
-fi
-# The decisive probe: the same query the app makes, executed as the debug package's uid, which
-# has exactly the app's permissions. Shell has broader access and can mask a permission problem.
-APP_Q=$(adb shell "run-as $DEBUG_PACKAGE content query --uri content://media/external/file \
-  --projection _id:_display_name:_mime_type:_size \
-  --where \"mime_type LIKE 'image/%' AND _size > 0\"" 2>&1 | head -4 | tr '\n' ' ')
-note "app-uid files query: $(printf '%s' "$APP_Q" | head -c 300)"
+note "device media dirs: $(adb shell 'ls /sdcard/Pictures /sdcard/DCIM 2>/dev/null' 2>/dev/null | tr '\n' ' ' | head -c 200)"
+# The app now logs its own library counts, so the app log above is the authoritative answer for
+# what it can see; shell queries are only here to show what the platform holds.
 if adb logcat -d -s "$LOGCAT_TAG":V 2>/dev/null | grep -q "Main resumed"; then
   ok "MainActivity reached onResume"
 else

@@ -25,6 +25,7 @@ import com.morsecode.app.core.ui.pad
 import com.morsecode.app.core.util.Compat
 import com.morsecode.app.core.util.D
 import com.morsecode.app.core.util.Fmt
+import com.morsecode.app.core.transfer.Log
 import com.morsecode.app.core.util.Permissions
 import com.morsecode.app.core.storage.SafStore
 import com.morsecode.app.core.storage.ShareUris
@@ -170,6 +171,10 @@ class FileManagerFragment(private val activity: Activity) : Screen {
     private fun rebuildGrid() {
         val ctx = activity
         val items = sorted(lib.all(category()))
+        // Says what the library actually returned. A grid that is empty while the phone has
+        // photos is then a one-line answer in Settings > Log viewer (and in logcat) instead of a
+        // mystery: the count and the category are the two things that tell them apart.
+        Log.info("Files: ${items.size} ${kind.name.lowercase()} item(s) from the media library")
         if (items.isEmpty()) {
             body.addView(emptyState())
             return
