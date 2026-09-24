@@ -34,7 +34,7 @@ the dex holds 442 classes of application code plus the Kotlin runtime. `tools/de
 exactly what is inside, and fails the build if anything the app calls is missing:
 
 ```bash
-python3 tools/dexcheck.py dist/MorseCode-1.0.1-release.apk
+python3 tools/dexcheck.py dist/MorseCode-1.0.2-release.apk
 ```
 
 ### 1. Offline script (no network, no Gradle, no Android Studio required)
@@ -81,8 +81,8 @@ Every push is built on GitHub Actions, opened on an emulator and then published,
 straight from [the releases page](https://github.com/ahmadyb/morsecodev2/releases/latest):
 
 ```bash
-adb install -r MorseCode-1.0.1-release.apk         # phones
-# MorseCode-1.0.1.aab -> Play Console -> Internal testing -> upload
+adb install -r MorseCode-1.0.2-release.apk         # phones
+# MorseCode-1.0.2.aab -> Play Console -> Internal testing -> upload
 ```
 
 > **v1.0.0 could not open.** The first release compiled but died on the first frame
@@ -90,6 +90,14 @@ adb install -r MorseCode-1.0.1-release.apk         # phones
 > freshly built container on every refresh, and the Connect screen refreshes as soon as discovery
 > starts). v1.0.1 fixes it and, more importantly, adds the emulator gate below so this class of bug
 > cannot ship again.
+>
+> **v1.0.2 fills in the Files tab.** On Android 10+ the unified `content://media/external/file`
+> table has no `DATE_TAKEN` column, and the library asked for it in every photo/video/music query.
+> The result was not a missing field but `IllegalArgumentException: Invalid column DATE_TAKEN`, so
+> the Files tab and WebShare's file list came up empty on a phone that was full of photos. The
+> queries now start with the columns the unified table really has and fall back by dropping the
+> optional ones (from the per-type tables), which the emulator gate now asserts: an empty grid on a
+> device that holds media fails the run.
 
 ### 3. CI — builds and publishes the release
 

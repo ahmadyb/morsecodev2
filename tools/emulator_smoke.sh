@@ -326,9 +326,27 @@ for i in 0 1 2 3; do
     else
       ok "the Files tab does not ask for storage permission"
     fi
+    # The grid reports what it got, and the device is asked what it holds: an empty grid on a
+    # phone that has photos is a failure, not an empty state. (It was a genuine failure for a
+    # while - the query named a column the unified MediaStore table does not have, so it returned
+    # nothing on every Android 10+ device while the library itself was full.)
+    GRID=$(adb logcat -d -s "$LOGCAT_TAG":V 2>/dev/null | grep -o "Files: [0-9]* [a-z]* item(s) from the media library (all=[0-9]*" | tail -1)
+    if [ -n "$GRID" ]; then
+      SHOWN=$(printf '%s' "$GRID" | sed -n 's/.*Files: \([0-9]*\).*/\1/p')
+      holds=$(printf '%s' "$GRID" | sed -n 's/.*all=\([0-9]*\).*/\1/p')
+      ann "Files grid: ${SHOWN:-0} shown of ${holds:-0} items in the library"
+      if [ "${holds:-0}" -gt 0 ] && [ "${SHOWN:-0}" -eq 0 ]; then
+        bad "the Files grid is empty although the library holds ${holds} items - see the media query lines in the app log"
+      fi
+    else
+      note "the Files grid did not report a library count"
+    fi
     if screen_shows "Today"; then
       ann "the Files tab is rendering media"
     else
+      if [ "${holds:-0}" -gt 0 ] && screen_shows "No photos yet"; then
+        bad "the Files tab shows 'No photos yet' although the library holds ${holds:-0} items"
+      fi
       ann "the Files tab shows its empty state (no media on the device)"
     fi
     if screen_shows "Apps" && screen_shows "Documents"; then

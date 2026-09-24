@@ -4,6 +4,33 @@ All notable changes to MorseCode. Releases are built and published by GitHub Act
 `v1.2.3` becomes `versionName 1.2.3`, `versionCode 10203`, and the tag is created on the commit
 the artifacts were built from.
 
+## 1.0.2 — the Files tab actually fills
+
+### Fixed
+- **Empty Files tab on Android 10 and newer.** The media library queried the unified
+  `content://media/external/file` table with a projection that names `DATE_TAKEN`, a column only
+  the per-type tables (images, video, audio) have. Android 10 turns that into
+  `IllegalArgumentException: Invalid column DATE_TAKEN` and returns nothing at all, so Photos,
+  Videos, Music and WebShare's file list were empty on a phone that was full of media — while the
+  permission banner was gone and `all=3` showed the library really did hold rows. `MediaLibrary`
+  now tries progressively plainer queries (optional columns dropped, `DATE_TAKEN` ordering replaced
+  by `DATE_MODIFIED * 1000`) and remembers the one the device accepted; the sort fallback for
+  `TITLE`, which the unified table also lacks, comes along with it.
+- **The empty state no longer hides a failure.** The grid logs what it got and what the library
+  holds, and the Files tab names Android 14's partial-access state ("Only the photos and videos you
+  selected are visible") instead of looking like a phone with no photos.
+
+### Changed
+- **The emulator gate asserts the Files tab.** An empty grid on a device that holds media now fails
+  the run, and the test grants `READ_MEDIA_IMAGES`/`VIDEO`/`AUDIO` explicitly because
+  `adb install -g` can leave a media app holding only `READ_MEDIA_VISUAL_USER_SELECTED`.
+- **Annotations are curated.** The smoke test's routine output goes to `::debug` and only the facts
+  that answer "what can the app see" become notices — a step keeps roughly ten of them. The test
+  also leaves `/tmp/smoke.started` / `/tmp/smoke.exit` breadcrumbs and annotates its exit code, so
+  an emulator that dies before the test can no longer fail the job silently.
+- The smoke job pins `ubuntu-24.04` (22.04 entered deprecation with scheduled brownouts on
+  2026-09-17; `ubuntu-latest` must not be able to change the emulator underneath a release).
+
 ## 1.0.1 — the app actually opens
 
 ### Fixed

@@ -35,7 +35,11 @@ class MediaLibrary(private val ctx: Context) {
 
     val uri: Uri = MediaStore.Files.getContentUri("external")
 
-    private val projection = arrayOf(
+    /**
+     * The columns every version of the unified `media/external/file` table has. [read] indexes the
+     * first seven by position, so the order here is part of the contract.
+     */
+    private val coreProjection = arrayOf(
         MediaStore.MediaColumns._ID,
         MediaStore.MediaColumns.DISPLAY_NAME,
         MediaStore.MediaColumns.MIME_TYPE,
@@ -45,21 +49,26 @@ class MediaLibrary(private val ctx: Context) {
         MediaStore.MediaColumns.DATA
     )
 
-    private val projectionWithDates = arrayOf(
-        MediaStore.MediaColumns._ID,
-        MediaStore.MediaColumns.DISPLAY_NAME,
-        MediaStore.MediaColumns.MIME_TYPE,
-        MediaStore.MediaColumns.SIZE,
-        MediaStore.MediaColumns.DATE_MODIFIED,
-        MediaStore.MediaColumns.DATE_ADDED,
-        MediaStore.MediaColumns.DATA,
-        "DATE_TAKEN",
-        "DURATION",
-        "WIDTH",
-        "HEIGHT",
-        "BUCKET_DISPLAY_NAME",
-        "BUCKET_ID"
-    )
+    /**
+     * Columns the *per-type* tables carry but the unified Files table does not always have.
+     *
+     * `content://media/external/file` is not `content://media/external/images`: from Android 10 it
+     * is a view assembled from those tables, and `DATE_TAKEN` is not one of its columns. Asking for
+     * one anyway is not a missing field, it is `IllegalArgumentException: Invalid column
+     * DATE_TAKEN` and the whole query returns nothing - which is exactly what emptied the Files tab
+     * and the browser's file list on every Android 10+ device. They are optional now, and dropped
+     * on the first refusal.
+     */
+    private val optionalColumns =
+        arrayOf("DATE_TAKEN", "DURATION", "WIDTH", "HEIGHT", "BUCKET_DISPLAY_NAME", "BUCKET_ID")
+
+    private val optionalShapeColumns = arrayOf("DURATION", "WIDTH", "HEIGHT", "BUCKET_DISPLAY_NAME", "BUCKET_ID")
+
+    /**
+     * Index into [candidatesFor] of the query this device last accepted, or -1 while unknown.
+     * Remembered for the life of the process so the ladder is paid for once, not per screen.
+     */
+    @Volatile private var accepted = -1
 
     /**
      * INV-9 sort expression. MediaStore accepts it on every version this app targets; if a
@@ -84,17 +93,15 @@ class MediaLibrary(private val ctx: Context) {
     /** One page of items. `limit` of 0 or less means "everything" (used by WebShare counts). */
     fun page(category: Category, offset: Int, limit: Int): List<MediaItem> {
         val out = ArrayList<MediaItem>()
-        try {
-            val (selection, args) = selectionFor(category)
-            val sort = if (category == Category.MUSIC) "TITLE COLLATE NOCASE ASC" else dateSortExpression
-            val cursor = try {
-                ctx.contentResolver.query(uri, projectionWithDates, selection, args, sort)
-            } catch (t: Throwable) {
-                // Android 14 (and some OEM builds) reject unknown sort tokens - retry safely.
-                alog("Media sort fallback: ${t.message}")
-                ctx.contentResolver.query(uri, projectionWithDates, selection, args, "_ID DESC")
-            } ?: return out
+        val (selection, args) = selectionFor(category)
+        val cursor = try {
+            openCursor(category, selection, args)
+        } catch (t: Throwable) {
+            alog("Media query failed: ${t.message}")
+            return out
+        } ?: return out
 
+        try {
             cursor.use { c ->
                 if (offset > 0 && !c.moveToPosition(offset)) return out
                 var read = 0
@@ -106,9 +113,61 @@ class MediaLibrary(private val ctx: Context) {
                 } while (c.moveToNext())
             }
         } catch (t: Throwable) {
-            alog("Media query failed: ${t.message}")
+            // A row that cannot be read is one row, not the screen: the rest of the page still is.
+            alog("Media read failed: ${t.message}")
         }
         return out
+    }
+
+    /**
+     * Opens the cursor using the first query this device accepts.
+     *
+     * Each candidate is a *complete query* - projection and sort together - because the two fall
+     * over for the same reason: the unified Files table has no `DATE_TAKEN` and no `TITLE`, so both
+     * the projection that names them and the sort that orders by them are refused. The accepted one
+     * is remembered; a later failure (a volume that went away, an OEM build that changed its mind)
+     * clears it and walks the ladder again.
+     */
+    private fun openCursor(category: Category, selection: String?, args: Array<String>?): Cursor? {
+        val list = candidatesFor(category)
+        val cached = accepted
+        if (cached in list.indices) {
+            try {
+                return ctx.contentResolver.query(uri, list[cached].first, selection, args, list[cached].second)
+            } catch (t: Throwable) {
+                alog("Media query retry after ${list[cached].first.size} columns: ${t.message}")
+                accepted = -1
+            }
+        }
+        var last: Throwable? = null
+        for (i in list.indices) {
+            val (projection, sort) = list[i]
+            try {
+                val c = ctx.contentResolver.query(uri, projection, selection, args, sort) ?: continue
+                if (accepted != i) {
+                    accepted = i
+                    if (i > 0) alog("Media query degraded to ${projection.size} columns (sort: $sort)")
+                }
+                return c
+            } catch (t: Throwable) {
+                last = t
+                alog("Media query rejected (${projection.size} columns, sort: $sort): ${t.message}")
+            }
+        }
+        throw last ?: IllegalStateException("MediaStore accepted no projection")
+    }
+
+    /** The queries to try, richest first. INV-9's ordering is the first one. */
+    private fun candidatesFor(category: Category): List<Pair<Array<String>, String>> {
+        val plainDateSort = "DATE_MODIFIED * 1000 DESC, _ID DESC"
+        val titleSort = "TITLE COLLATE NOCASE ASC"
+        val music = category == Category.MUSIC
+        return listOf(
+            (coreProjection + optionalColumns) to (if (music) titleSort else dateSortExpression),
+            (coreProjection + optionalShapeColumns) to (if (music) titleSort else plainDateSort),
+            coreProjection to (if (music) "DISPLAY_NAME COLLATE NOCASE ASC" else plainDateSort),
+            coreProjection to "_ID DESC"
+        )
     }
 
     fun all(category: Category): List<MediaItem> = page(category, 0, 0)
