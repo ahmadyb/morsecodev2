@@ -436,6 +436,24 @@ def sanitise_jar(path, dest_dir):
     return out, kept
 
 
+def zip_classes(class_dirs, out_jar):
+    """
+    Pack compiled class directories into one archive.
+
+    dx accepted a directory as input; d8 does not - it fails with "Unsupported source file type"
+    on `build/classes-main`. A zip of the same classes is accepted by both.
+    """
+    count = 0
+    with zipfile.ZipFile(out_jar, "w", zipfile.ZIP_DEFLATED) as zf:
+        for base in class_dirs:
+            for dirpath, _dirnames, filenames in os.walk(base):
+                for fn in filenames:
+                    full = os.path.join(dirpath, fn)
+                    zf.write(full, os.path.relpath(full, base))
+                    count += 1
+    return out_jar, count
+
+
 def stage_dex(sh, T, class_dirs):
     """Dex the app plus the Kotlin runtime; returns [classes.dex, classes2.dex, ...]."""
     out_dir = os.path.join(BUILD, "dex")
@@ -453,8 +471,10 @@ def stage_dex(sh, T, class_dirs):
         clean, kept = sanitise_jar(jar, jar_dir)
         print("    dexing %s (%d entries)" % (os.path.basename(jar), kept))
         runtime.append(clean)
+    app_jar, classes = zip_classes(class_dirs, os.path.join(BUILD, "classes-app.jar"))
+    print("    %d compiled class files" % classes)
     sh.run(
-        dexer_cmd(T, out_dir) + class_dirs + runtime,
+        dexer_cmd(T, out_dir) + [app_jar] + runtime,
         quiet=True,
     )
     dexs = sorted(
