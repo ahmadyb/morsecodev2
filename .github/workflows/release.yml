@@ -184,6 +184,20 @@ jobs:
           ls -la out
           test -f "out/MorseCode-${V}-release.apk" || { echo "::error::no release APK was produced"; exit 1; }
 
+          # The bundle is what Play consumes, so check its required pieces before publishing.
+          python3 -c "
+          import sys, zipfile
+          p = 'out/MorseCode-${V}.aab'
+          names = zipfile.ZipFile(p).namelist()
+          need = ['base/manifest/AndroidManifest.xml', 'BundleConfig.pb']
+          missing = [n for n in need if n not in names]
+          if not any(n.startswith('base/dex/') and n.endswith('.dex') for n in names):
+              missing.append('base/dex/*.dex')
+          if missing:
+              print('::error::the AAB is missing ' + ', '.join(missing)); sys.exit(1)
+          print('AAB ok: %d entries' % len(names))
+          "
+
       - name: Verify the signed release APK
         run: |
           set -euo pipefail
