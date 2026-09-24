@@ -7,6 +7,12 @@ package com.morsecode.app
  */
 object BuildConfig {
     const val APPLICATION_ID = "com.morsecode.app"
+
+    /**
+     * Version shown in Settings > About. Gradle passes the real values in as `BuildConfig`
+     * fields, and the offline builder overwrites these two constants from the same
+     * MC_VERSION_NAME / MC_VERSION_CODE environment variables.
+     */
     const val VERSION_NAME = "1.0.0"
     const val VERSION_CODE = 1
     const val DEBUG = false

@@ -41,8 +41,9 @@ BUILD = os.path.join(ROOT, "build")
 DIST = os.path.join(ROOT, "dist")
 
 APP_ID = "com.morsecode.app"
-VERSION_NAME = "1.0.0"
-VERSION_CODE = "1"
+# Same contract as the Gradle build: CI exports these from the release tag (v1.2.3 -> 1.2.3).
+VERSION_NAME = os.environ.get("MC_VERSION_NAME", "1.0.0")
+VERSION_CODE = os.environ.get("MC_VERSION_CODE", "1")
 MIN_SDK = "21"
 TARGET_SDK = "34"
 

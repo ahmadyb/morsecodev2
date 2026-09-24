@@ -39,8 +39,9 @@ android {
         applicationId = "com.morsecode.app"
         minSdk = 21
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        // CI sets these from the release tag (v1.2.3 -> versionName 1.2.3, versionCode 10203).
+        versionCode = System.getenv("MC_VERSION_CODE")?.toIntOrNull() ?: 1
+        versionName = System.getenv("MC_VERSION_NAME") ?: "1.0.0"
         resourceConfigurations += listOf("en")
     }
 

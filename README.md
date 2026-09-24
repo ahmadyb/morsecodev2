@@ -13,6 +13,11 @@ no account, no cloud, no analytics, no ads.
 
 <p align="center"><img src="morseliink/logo.PNG" width="160" alt="MorseCode logo"></p>
 
+<p align="center">
+  <a href="https://github.com/ahmadyb/morsecodev2/releases/latest"><b>Download the latest release</b></a>
+  &nbsp;·&nbsp; signed APK, debug APK and AAB, built by GitHub Actions
+</p>
+
 ---
 
 ## Build
@@ -44,17 +49,30 @@ you want a wrapper in your fork. The Gradle debug build carries the `.debug` app
 (standard AGP behaviour, installs side by side); the offline script keeps the plain
 `com.morsecode.app` id for both APKs.
 
+### Download instead of building
+
+Every push is built on GitHub Actions and published as a release, so you can install straight from
+[the releases page](https://github.com/ahmadyb/morsecodev2/releases/latest):
+
+```bash
+adb install -r MorseCode-1.0.0-release.apk         # phones
+# MorseCode-1.0.0.aab -> Play Console -> Internal testing -> upload
+```
+
 ### 3. CI — builds and publishes the release
 
 `.github/workflows/release.yml` runs on every push to `main` / `arena/**` and on `v*` tags:
 
 1. installs JDK 17, the Android SDK (platforms 23 + 34, build-tools 34.0.0) and Gradle 8.7,
+   and derives the version from the tag (`v1.2.3` → `versionName 1.2.3`, `versionCode 10203`),
 2. builds `assembleDebug`, `assembleRelease` and `bundleRelease`,
 3. **if Gradle cannot reach Google Maven**, automatically falls back to `tools/offline_build.py`
    (it downloads the Kotlin compiler and drives aapt2 → kotlinc → d8 → zipalign → apksigner),
-4. verifies the release signature with `apksigner` and writes `SHA256SUMS.txt`,
+4. verifies the release signature with `apksigner` (the signer and signing schemes are reported
+   as a workflow notice) and writes `SHA256SUMS.txt`,
 5. uploads the three artifacts and **publishes them on a GitHub release** (`v1.0.0` for branch
-   pushes, or the pushed tag). Manual runs: *Actions → Build & Release → Run workflow*.
+   pushes, or the pushed tag — the tag is created on the built commit, not on `main`).
+   Manual runs: *Actions → Build & Release → Run workflow*.
 
 Signing uses `keystore/keystore.properties` (or the committed demo key) in CI. Set the
 `MC_KEYSTORE_PASSWORD` / `MC_KEY_PASSWORD` repository secrets — and provide your own keystore —
