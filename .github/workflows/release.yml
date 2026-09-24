@@ -1,0 +1,73 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Create a GitHub release with the artifacts"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build APKs and AAB
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle 8.7
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: "8.7"
+
+      - name: Build debug APK
+        run: gradle --no-daemon assembleDebug
+
+      - name: Build signed release APK
+        env:
+          MC_KEYSTORE_PASSWORD: ${{ secrets.MC_KEYSTORE_PASSWORD }}
+          MC_KEY_PASSWORD: ${{ secrets.MC_KEY_PASSWORD }}
+        run: gradle --no-daemon assembleRelease
+
+      - name: Build AAB
+        env:
+          MC_KEYSTORE_PASSWORD: ${{ secrets.MC_KEYSTORE_PASSWORD }}
+          MC_KEY_PASSWORD: ${{ secrets.MC_KEY_PASSWORD }}
+        run: gradle --no-daemon bundleRelease
+
+      - name: Collect artifacts
+        run: |
+          mkdir -p out
+          cp app/build/outputs/apk/debug/*.apk out/ 2>/dev/null || true
+          cp app/build/outputs/apk/release/*.apk out/ 2>/dev/null || true
+          cp app/build/outputs/bundle/release/*.aab out/ 2>/dev/null || true
+          ls -la out
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: morsecode-artifacts
+          path: out/*
+          if-no-files-found: error
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/') || inputs.publish
+        uses: softprops/action-gh-release@v2
+        with:
+          name: MorseCode ${{ github.ref_name }}
+          generate_release_notes: true
+          files: out/*
+          fail_on_unmatched_files: false

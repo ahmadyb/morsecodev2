@@ -1,0 +1,313 @@
+/*
+ * Compiled against android-34 on purpose: this file exists to wrap APIs that do not exist on
+ * the API-23 floor. Every call site inside it is guarded by a Build.VERSION check, and the rest
+ * of the app only ever talks to the wrapper. It lives in `compat/` because tools/offline_build.py
+ * compiles that directory against the newest platform jar and everything else against API 23,
+ * which turns "accidentally used a modern API" into a build error.
+ */
+package com.morsecode.app.core.media
+
+import android.content.ContentUris
+import android.content.Context
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
+import android.database.Cursor
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
+import com.morsecode.app.core.model.MediaItem
+import com.morsecode.app.core.util.Paths
+import java.io.File
+
+/**
+ * The phone's media library, backed by MediaStore.
+ *
+ * INV-9  photos/videos sort by date taken (falling back to date modified), `_ID DESC` tiebreak,
+ *        which is what makes Today / Yesterday / dated headers appear exactly once, in order.
+ * INV-10 pagination opens the cursor, `moveToPosition(offset)`, then reads `limit` rows - a
+ *        LIMIT/OFFSET clause is never placed inside the sort string (Android 14 rejects those
+ *        with "Invalid token LIMIT").
+ */
+class MediaLibrary(private val ctx: Context) {
+
+    enum class Category { PHOTOS, VIDEOS, MUSIC, DOCUMENTS, APPS, ALL }
+
+    val uri: Uri = MediaStore.Files.getContentUri("external")
+
+    private val projection = arrayOf(
+        MediaStore.MediaColumns._ID,
+        MediaStore.MediaColumns.DISPLAY_NAME,
+        MediaStore.MediaColumns.MIME_TYPE,
+        MediaStore.MediaColumns.SIZE,
+        MediaStore.MediaColumns.DATE_MODIFIED,
+        MediaStore.MediaColumns.DATE_ADDED,
+        MediaStore.MediaColumns.DATA
+    )
+
+    private val projectionWithDates = arrayOf(
+        MediaStore.MediaColumns._ID,
+        MediaStore.MediaColumns.DISPLAY_NAME,
+        MediaStore.MediaColumns.MIME_TYPE,
+        MediaStore.MediaColumns.SIZE,
+        MediaStore.MediaColumns.DATE_MODIFIED,
+        MediaStore.MediaColumns.DATE_ADDED,
+        MediaStore.MediaColumns.DATA,
+        "DATE_TAKEN",
+        "DURATION",
+        "WIDTH",
+        "HEIGHT",
+        "BUCKET_DISPLAY_NAME",
+        "BUCKET_ID"
+    )
+
+    /**
+     * INV-9 sort expression. MediaStore accepts it on every version this app targets; if a
+     * particular OEM build rejects it we fall back to a plain `_ID DESC` and sort in memory.
+     */
+    private val dateSortExpression =
+        "CASE WHEN DATE_TAKEN > 0 THEN DATE_TAKEN ELSE DATE_MODIFIED * 1000 END DESC, _ID DESC"
+
+    // ---------------------------------------------------------------- queries
+
+    fun count(category: Category): Int {
+        return try {
+            val (selection, args) = selectionFor(category)
+            ctx.contentResolver.query(uri, arrayOf(MediaStore.MediaColumns._ID), selection, args, null)?.use { c ->
+                c.count
+            } ?: 0
+        } catch (t: Throwable) {
+            0
+        }
+    }
+
+    /** One page of items. `limit` of 0 or less means "everything" (used by WebShare counts). */
+    fun page(category: Category, offset: Int, limit: Int): List<MediaItem> {
+        val out = ArrayList<MediaItem>()
+        try {
+            val (selection, args) = selectionFor(category)
+            val sort = if (category == Category.MUSIC) "TITLE COLLATE NOCASE ASC" else dateSortExpression
+            val cursor = try {
+                ctx.contentResolver.query(uri, projectionWithDates, selection, args, sort)
+            } catch (t: Throwable) {
+                // Android 14 (and some OEM builds) reject unknown sort tokens - retry safely.
+                alog("Media sort fallback: ${t.message}")
+                ctx.contentResolver.query(uri, projectionWithDates, selection, args, "_ID DESC")
+            } ?: return out
+
+            cursor.use { c ->
+                if (offset > 0 && !c.moveToPosition(offset)) return out
+                var read = 0
+                // INV-10: no LIMIT/OFFSET in the query string - walk the cursor instead.
+                do {
+                    if (limit > 0 && read >= limit) break
+                    out.add(read(c))
+                    read++
+                } while (c.moveToNext())
+            }
+        } catch (t: Throwable) {
+            alog("Media query failed: ${t.message}")
+        }
+        return out
+    }
+
+    fun all(category: Category): List<MediaItem> = page(category, 0, 0)
+
+    private fun read(c: Cursor): MediaItem {
+        val id = c.getLong(0)
+        val name = c.getString(1) ?: "file"
+        val mime = c.getString(2) ?: Paths.guessMime(name)
+        val size = c.getLong(3)
+        val modified = c.getLong(4)
+        val path = c.getString(6) ?: ""
+        var taken = 0L
+        var duration = 0L
+        var w = 0
+        var h = 0
+        var bucket = ""
+        var bucketId = 0L
+        taken = longOr(c, "DATE_TAKEN")
+        duration = longOr(c, "DURATION")
+        w = intOr(c, "WIDTH")
+        h = intOr(c, "HEIGHT")
+        bucket = strOr(c, "BUCKET_DISPLAY_NAME")
+        bucketId = longOr(c, "BUCKET_ID")
+        return MediaItem(
+            id = id,
+            uri = ContentUris.withAppendedId(uri, id).toString(),
+            displayName = name,
+            mime = mime,
+            size = size,
+            durationMs = duration,
+            width = w,
+            height = h,
+            dateMs = if (taken > 0) taken else modified * 1000L,
+            bucket = bucket,
+            bucketId = bucketId,
+            path = path
+        )
+    }
+
+    private fun longOr(c: Cursor, column: String): Long {
+        val i = c.getColumnIndex(column)
+        return if (i >= 0 && !c.isNull(i)) c.getLong(i) else 0L
+    }
+
+    private fun intOr(c: Cursor, column: String): Int {
+        val i = c.getColumnIndex(column)
+        return if (i >= 0 && !c.isNull(i)) c.getInt(i) else 0
+    }
+
+    private fun strOr(c: Cursor, column: String): String {
+        val i = c.getColumnIndex(column)
+        return if (i >= 0 && !c.isNull(i)) c.getString(i) ?: "" else ""
+    }
+
+    private fun selectionFor(category: Category): Pair<String, Array<String>> {
+        val images = "${MediaStore.MediaColumns.MIME_TYPE} LIKE 'image/%'"
+        val videos = "${MediaStore.MediaColumns.MIME_TYPE} LIKE 'video/%'"
+        val audio = "${MediaStore.MediaColumns.MIME_TYPE} LIKE 'audio/%'"
+        val documents = "(${MediaStore.MediaColumns.MIME_TYPE} LIKE 'application/pdf'" +
+            " OR ${MediaStore.MediaColumns.MIME_TYPE} LIKE 'application/msword%'" +
+            " OR ${MediaStore.MediaColumns.MIME_TYPE} LIKE 'application/vnd.ms-%'" +
+            " OR ${MediaStore.MediaColumns.MIME_TYPE} LIKE 'application/vnd.openxml%'" +
+            " OR ${MediaStore.MediaColumns.MIME_TYPE} LIKE 'text/%')"
+        return when (category) {
+            Category.PHOTOS -> "$images AND ${MediaStore.MediaColumns.SIZE} > 0" to emptyArray()
+            Category.VIDEOS -> "$videos AND ${MediaStore.MediaColumns.SIZE} > 0" to emptyArray()
+            Category.MUSIC -> "$audio AND ${MediaStore.MediaColumns.SIZE} > 0" to emptyArray()
+            Category.DOCUMENTS -> "$documents AND ${MediaStore.MediaColumns.SIZE} > 0" to emptyArray()
+            Category.ALL -> "${MediaStore.MediaColumns.SIZE} > 0" to emptyArray()
+            Category.APPS -> "1 = 0" to emptyArray()
+        }
+    }
+
+    /** Folder sidebar data (name + count + bytes), grouped by bucket. */
+    fun folderInfo(category: Category): List<FolderInfo> {
+        val map = LinkedHashMap<String, FolderInfo>()
+        val items = all(category)
+        for (i in items) {
+            val key = i.bucket.ifBlank { "Other" }
+            val f = map[key] ?: FolderInfo(key, 0, 0L)
+            f.count++
+            f.bytes += i.size
+            map[key] = f
+        }
+        return map.values.sortedByDescending { it.count }
+    }
+
+    class FolderInfo(val name: String, var count: Int, var bytes: Long)
+
+    /** Category counters used by the Files tab and by WebShare's sidebar. */
+    fun categoryCounts(): Map<String, Int> = mapOf(
+        "Photos" to count(Category.PHOTOS),
+        "Videos" to count(Category.VIDEOS),
+        "Music" to count(Category.MUSIC),
+        "Docs" to count(Category.DOCUMENTS),
+        "Apps" to installedApps().size
+    )
+
+    // ---------------------------------------------------------------- subtypes
+
+    fun documents(sub: String): List<MediaItem> {
+        val all = all(Category.DOCUMENTS) + all(Category.ALL).filter {
+            val n = it.displayName.lowercase()
+            n.endsWith(".epub") || n.endsWith(".zip") || n.endsWith(".rar") || n.endsWith(".7z") ||
+                n.endsWith(".apk") || n.endsWith(".tar") || n.endsWith(".gz")
+        }
+        return when (sub) {
+            "ebooks" -> all.filter { it.displayName.lowercase().let { n -> n.endsWith(".epub") || n.endsWith(".mobi") || n.endsWith(".azw3") } }
+            "archives" -> all.filter { it.displayName.lowercase().let { n -> n.endsWith(".zip") || n.endsWith(".rar") || n.endsWith(".7z") || n.endsWith(".tar") || n.endsWith(".gz") } }
+            "apks" -> all.filter { it.displayName.lowercase().endsWith(".apk") }
+            "large" -> all.filter { it.size >= 50L * 1024 * 1024 }.sortedByDescending { it.size }
+            else -> all.filter { it.mime.startsWith("application/") || it.mime.startsWith("text/") }
+        }
+    }
+
+    // ---------------------------------------------------------------- apps
+
+    fun installedApps(): List<MediaItem> {
+        val pm = ctx.packageManager
+        val out = ArrayList<MediaItem>()
+        try {
+            val apps = if (Build.VERSION.SDK_INT >= 33) {
+                pm.getInstalledApplications(PackageManager.ApplicationInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                pm.getInstalledApplications(0)
+            }
+            for (ai in apps) {
+                val hasLauncher = try {
+                    pm.getLaunchIntentForPackage(ai.packageName) != null
+                } catch (t: Throwable) {
+                    false
+                }
+                if (!hasLauncher) continue
+                val label = try { pm.getApplicationLabel(ai).toString() } catch (t: Throwable) { ai.packageName }
+                val src = try { pm.getApplicationInfo(ai.packageName, 0).sourceDir } catch (t: Throwable) { "" }
+                val size = if (src.isNotBlank()) File(src).length() else 0L
+                out.add(
+                    MediaItem(
+                        id = ai.packageName.hashCode().toLong(),
+                        uri = "app://" + ai.packageName,
+                        displayName = label,
+                        mime = "application/vnd.android.package-archive",
+                        size = size,
+                        path = src,
+                        isApp = true,
+                        packageName = ai.packageName
+                    )
+                )
+            }
+        } catch (t: Throwable) {
+            alog("App listing failed: ${t.message}")
+        }
+        return out.sortedBy { it.displayName.lowercase() }
+    }
+
+    fun apkPathFor(packageName: String): String? = try {
+        ctx.packageManager.getApplicationInfo(packageName, 0).sourceDir
+    } catch (t: Throwable) {
+        null
+    }
+
+    /** Real, downsampled content URI for grid tiles - never a full-resolution decode. */
+    fun thumbnailUri(item: MediaItem): Uri = Uri.parse(item.uri)
+
+    // ---------------------------------------------------------------- storage
+
+    class StorageStat(val used: Long, val total: Long) {
+        val free: Long get() = total - used
+    }
+
+    fun storage(): StorageStat {
+        return try {
+            val ext = Environment.getExternalStorageDirectory()
+            val stat = android.os.StatFs(ext.path)
+            val total = stat.blockCountLong * stat.blockSizeLong
+            val free = stat.availableBlocksLong * stat.blockSizeLong
+            StorageStat(total - free, total)
+        } catch (t: Throwable) {
+            StorageStat(0, 0)
+        }
+    }
+
+    // ---------------------------------------------------------------- display
+
+    fun sizeLabel(bytes: Long): String {
+        if (bytes < 1024) return "$bytes B"
+        val kb = bytes / 1024.0
+        if (kb < 1024) return "%.1f KB".format(java.util.Locale.US, kb)
+        val mb = kb / 1024.0
+        return if (mb < 1024) "%.1f MB".format(java.util.Locale.US, mb)
+        else "%.2f GB".format(java.util.Locale.US, mb / 1024.0)
+    }
+
+    /** Local diagnostics: compat code logs straight to logcat, never to the in-app ring buffer. */
+    private fun alog(message: String) {
+        try {
+            android.util.Log.w("MorseCode", message)
+        } catch (ignored: Throwable) {
+        }
+    }
+}

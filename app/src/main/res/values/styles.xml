@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+  <!-- Dark is the product default; light is an exact structural mirror. -->
+  <style name="McTheme.Dark" parent="@android:style/Theme.Material.NoActionBar">
+    <item name="android:windowBackground">@color/mc_bg_dark</item>
+    <item name="android:colorBackground">@color/mc_bg_dark</item>
+    <item name="android:statusBarColor">@color/mc_bg_dark</item>
+    <item name="android:navigationBarColor">@color/mc_bg_dark</item>
+    <item name="android:colorAccent">@color/mc_sun</item>
+    <item name="android:colorPrimary">@color/mc_bg_dark</item>
+    <item name="android:colorPrimaryDark">@color/mc_bg_dark</item>
+    <item name="android:textColorPrimary">@color/mc_text_dark</item>
+    <item name="android:textColorSecondary">@color/mc_text_dark_2</item>
+    <item name="android:textColorHint">@color/mc_muted_dark</item>
+    <item name="android:windowContentTransitions">true</item>
+    <item name="android:windowAnimationStyle">@android:style/Animation.Activity</item>
+  </style>
+
+  <style name="McTheme.Light" parent="@android:style/Theme.Material.Light.NoActionBar">
+    <item name="android:windowBackground">@color/mc_bg_light</item>
+    <item name="android:colorBackground">@color/mc_bg_light</item>
+    <item name="android:statusBarColor">@color/mc_surface_light</item>
+    <item name="android:navigationBarColor">@color/mc_surface_light</item>
+    <item name="android:colorAccent">@color/mc_accent_yellow_light</item>
+    <item name="android:colorPrimary">@color/mc_surface_light</item>
+    <item name="android:colorPrimaryDark">@color/mc_surface_light</item>
+    <item name="android:textColorPrimary">@color/mc_text_light</item>
+    <item name="android:textColorSecondary">@color/mc_text_light_2</item>
+    <item name="android:textColorHint">@color/mc_muted_light</item>
+  </style>
+
+  <!-- Fullscreen surfaces: image viewer, video player, QR scanner -->
+  <style name="McTheme.Black" parent="@android:style/Theme.Material.NoActionBar">
+    <item name="android:windowBackground">@color/mc_bg_dark</item>
+    <item name="android:statusBarColor">@color/mc_bg_dark</item>
+    <item name="android:navigationBarColor">@color/mc_bg_dark</item>
+    <item name="android:colorAccent">@color/mc_sun</item>
+    <item name="android:textColorPrimary">@color/mc_text_dark</item>
+    <item name="android:textColorSecondary">@color/mc_text_dark_2</item>
+  </style>
+
+  <!-- Theme overlay: Yellow on dark -->
+  <style name="McTheme.Dark.Yellow" parent="@style/McTheme.Dark">
+    <item name="android:colorAccent">@color/mc_accent_yellow_dark</item>
+    <item name="mcAccentStart">@color/mc_accent_yellow_dark</item>
+    <item name="mcAccentEnd">@color/mc_accent_yellow_dark_2</item>
+    <item name="mcAccentName">Yellow</item>
+  </style>
+
+  <!-- Theme overlay: Yellow on light -->
+  <style name="McTheme.Light.Yellow" parent="@style/McTheme.Light">
+    <item name="android:colorAccent">@color/mc_accent_yellow_light</item>
+    <item name="mcAccentStart">@color/mc_accent_yellow_light</item>
+    <item name="mcAccentEnd">@color/mc_accent_yellow_light_2</item>
+    <item name="mcAccentName">Yellow</item>
+  </style>
+  <!-- Theme overlay: Green on dark -->
+  <style name="McTheme.Dark.Green" parent="@style/McTheme.Dark">
+    <item name="android:colorAccent">@color/mc_accent_green_dark</item>
+    <item name="mcAccentStart">@color/mc_accent_green_dark</item>
+    <item name="mcAccentEnd">@color/mc_accent_green_dark_2</item>
+    <item name="mcAccentName">Green</item>
+  </style>
+
+  <!-- Theme overlay: Green on light -->
+  <style name="McTheme.Light.Green" parent="@style/McTheme.Light">
+    <item name="android:colorAccent">@color/mc_accent_green_light</item>
+    <item name="mcAccentStart">@color/mc_accent_green_light</item>
+    <item name="mcAccentEnd">@color/mc_accent_green_light_2</item>
+    <item name="mcAccentName">Green</item>
+  </style>
+  <!-- Theme overlay: Orange on dark -->
+  <style name="McTheme.Dark.Orange" parent="@style/McTheme.Dark">
+    <item name="android:colorAccent">@color/mc_accent_orange_dark</item>
+    <item name="mcAccentStart">@color/mc_accent_orange_dark</item>
+    <item name="mcAccentEnd">@color/mc_accent_orange_dark_2</item>
+    <item name="mcAccentName">Orange</item>
+  </style>
+
+  <!-- Theme overlay: Orange on light -->
+  <style name="McTheme.Light.Orange" parent="@style/McTheme.Light">
+    <item name="android:colorAccent">@color/mc_accent_orange_light</item>
+    <item name="mcAccentStart">@color/mc_accent_orange_light</item>
+    <item name="mcAccentEnd">@color/mc_accent_orange_light_2</item>
+    <item name="mcAccentName">Orange</item>
+  </style>
+  <!-- Theme overlay: Purple on dark -->
+  <style name="McTheme.Dark.Purple" parent="@style/McTheme.Dark">
+    <item name="android:colorAccent">@color/mc_accent_purple_dark</item>
+    <item name="mcAccentStart">@color/mc_accent_purple_dark</item>
+    <item name="mcAccentEnd">@color/mc_accent_purple_dark_2</item>
+    <item name="mcAccentName">Purple</item>
+  </style>
+
+  <!-- Theme overlay: Purple on light -->
+  <style name="McTheme.Light.Purple" parent="@style/McTheme.Light">
+    <item name="android:colorAccent">@color/mc_accent_purple_light</item>
+    <item name="mcAccentStart">@color/mc_accent_purple_light</item>
+    <item name="mcAccentEnd">@color/mc_accent_purple_light_2</item>
+    <item name="mcAccentName">Purple</item>
+  </style>
+  <!-- Theme overlay: Blue on dark -->
+  <style name="McTheme.Dark.Blue" parent="@style/McTheme.Dark">
+    <item name="android:colorAccent">@color/mc_accent_blue_dark</item>
+    <item name="mcAccentStart">@color/mc_accent_blue_dark</item>
+    <item name="mcAccentEnd">@color/mc_accent_blue_dark_2</item>
+    <item name="mcAccentName">Blue</item>
+  </style>
+
+  <!-- Theme overlay: Blue on light -->
+  <style name="McTheme.Light.Blue" parent="@style/McTheme.Light">
+    <item name="android:colorAccent">@color/mc_accent_blue_light</item>
+    <item name="mcAccentStart">@color/mc_accent_blue_light</item>
+    <item name="mcAccentEnd">@color/mc_accent_blue_light_2</item>
+    <item name="mcAccentName">Blue</item>
+  </style>
+
+</resources>

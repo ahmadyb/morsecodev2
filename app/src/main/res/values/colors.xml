@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+  <!-- SURFACES - DARK -->
+  <color name="mc_bg_dark">#FF0B0B0B</color>
+  <color name="mc_surface_dark">#FF141414</color>
+  <color name="mc_card_dark">#FF1A1A1A</color>
+  <color name="mc_card_dark_2">#FF1F1F1F</color>
+  <color name="mc_card_dark_3">#FF262626</color>
+  <color name="mc_line_dark">#12FFFFFF</color>
+  <color name="mc_line_dark_2">#24FFFFFF</color>
+  <color name="mc_text_dark">#FFF5F5F5</color>
+  <color name="mc_text_dark_2">#FFA3A3A3</color>
+  <color name="mc_muted_dark">#FF6B6B6B</color>
+
+  <!-- SURFACES - LIGHT -->
+  <color name="mc_bg_light">#FFEEEDE7</color>
+  <color name="mc_surface_light">#FFFFFFFF</color>
+  <color name="mc_card_light">#FFFFFFFF</color>
+  <color name="mc_card_light_2">#FFF5F4EE</color>
+  <color name="mc_card_light_3">#FFE8E7E0</color>
+  <color name="mc_line_light">#1A0F172A</color>
+  <color name="mc_line_light_2">#2E0F172A</color>
+  <color name="mc_text_light">#FF0F172A</color>
+  <color name="mc_text_light_2">#FF475569</color>
+  <color name="mc_muted_light">#FF94A3B8</color>
+
+  <!-- SUNFLOWER CORE (Yellow swatch + shared status/gradient tokens) -->
+  <color name="mc_sun">#FFFACC15</color>
+  <color name="mc_sun_2">#FFEAB308</color>
+  <color name="mc_sun_deep">#FFA16207</color>
+  <color name="mc_lime">#FF84CC16</color>
+  <color name="mc_lime_2">#FF65A30D</color>
+  <color name="mc_ember">#FFEA580C</color>
+  <color name="mc_ember_2">#FFF97316</color>
+
+  <!-- ACCENT SWATCH: YELLOW (default) -->
+  <color name="mc_accent_yellow_dark">#FFFACC15</color>
+  <color name="mc_accent_yellow_dark_2">#FFEAB308</color>
+  <color name="mc_accent_yellow_light">#FFEAB308</color>
+  <color name="mc_accent_yellow_light_2">#FFCA8A04</color>
+
+  <!-- ACCENT SWATCH: GREEN -->
+  <color name="mc_accent_green_dark">#FF84CC16</color>
+  <color name="mc_accent_green_dark_2">#FF65A30D</color>
+  <color name="mc_accent_green_light">#FF65A30D</color>
+  <color name="mc_accent_green_light_2">#FF4D7C0F</color>
+
+  <!-- ACCENT SWATCH: ORANGE -->
+  <color name="mc_accent_orange_dark">#FFEA580C</color>
+  <color name="mc_accent_orange_dark_2">#FFF97316</color>
+  <color name="mc_accent_orange_light">#FFEA580C</color>
+  <color name="mc_accent_orange_light_2">#FFC2410C</color>
+
+  <!-- ACCENT SWATCH: PURPLE -->
+  <color name="mc_accent_purple_dark">#FF8B5CF6</color>
+  <color name="mc_accent_purple_dark_2">#FF7C3AED</color>
+  <color name="mc_accent_purple_light">#FF7C3AED</color>
+  <color name="mc_accent_purple_light_2">#FF6D28D9</color>
+
+  <!-- ACCENT SWATCH: BLUE -->
+  <color name="mc_accent_blue_dark">#FF38BDF8</color>
+  <color name="mc_accent_blue_dark_2">#FF0284C7</color>
+  <color name="mc_accent_blue_light">#FF0284C7</color>
+  <color name="mc_accent_blue_light_2">#FF075985</color>
+
+  <color name="mc_accent_ink_dark">#FF2A1702</color>
+  <color name="mc_accent_ink_light">#FFFFFFFF</color>
+  <color name="mc_accent_soft_dark">#24FACC15</color>
+  <color name="mc_accent_line_dark">#5CFACC15</color>
+  <color name="mc_accent_soft_light">#29EAB308</color>
+  <color name="mc_accent_line_light">#73CA8A04</color>
+
+  <!-- STATUS -->
+  <color name="mc_green_dark">#FF22C55E</color>
+  <color name="mc_green_2_dark">#FF16A34A</color>
+  <color name="mc_green_light">#FF16A34A</color>
+  <color name="mc_red">#FFEF4444</color>
+  <color name="mc_purple">#FF8B5CF6</color>
+  <color name="mc_blue_dark">#FF38BDF8</color>
+  <color name="mc_blue_light">#FF0284C7</color>
+
+  <!-- FILE TYPE COLORS -->
+  <color name="mc_file_pdf">#FFF87171</color>
+  <color name="mc_file_doc">#FF60A5FA</color>
+  <color name="mc_file_zip">#FFFACC15</color>
+  <color name="mc_file_img">#FF65A30D</color>
+  <color name="mc_file_folder">#FFFACC15</color>
+
+  <!-- brand gradient stops (drawable XML workaround: Android gradients take max 3 stops) -->
+  <color name="mc_bar_1">#FFFACC15</color>
+  <color name="mc_bar_2">#FFF59E0B</color>
+  <color name="mc_bar_3">#FFEA580C</color>
+  <color name="mc_bar_4">#FF84CC16</color>
+  <color name="mc_transparent">#00000000</color>
+  <color name="mc_scrim">#99000000</color>
+
+</resources>

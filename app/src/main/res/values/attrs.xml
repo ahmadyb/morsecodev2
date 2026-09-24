@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Sunflower Hue theme attributes exposed by the McTheme overlays. -->
+<resources>
+  <declare-styleable name="McThemeAttrs">
+    <attr name="mcAccentStart" format="color" />
+    <attr name="mcAccentEnd" format="color" />
+    <attr name="mcAccentName" format="string" />
+  </declare-styleable>
+</resources>

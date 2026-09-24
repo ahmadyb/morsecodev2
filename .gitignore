@@ -1,0 +1,14 @@
+# build intermediates
+build/
+.gradle/
+app/build/
+
+# ide / os
+.idea/
+*.iml
+.DS_Store
+local.properties
+
+# real signing material for your own releases (the committed keystore/ is a labeled demo key)
+*.production.jks
+*.production.keystore
