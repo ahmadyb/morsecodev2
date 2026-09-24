@@ -174,7 +174,15 @@ class FileManagerFragment(private val activity: Activity) : Screen {
         // Says what the library actually returned. A grid that is empty while the phone has
         // photos is then a one-line answer in Settings > Log viewer (and in logcat) instead of a
         // mystery: the count and the category are the two things that tell them apart.
-        Log.info("Files: ${items.size} ${kind.name.lowercase()} item(s) from the media library")
+        // The count, the whole-library count and the volume names are the three facts that
+        // separate "this phone has no media", "the app is asking the wrong volume" and "the
+        // platform is filtering the library to a user-selected subset".
+        Log.info(
+            "Files: ${items.size} ${kind.name.lowercase()} item(s) from the media library" +
+                " (all=${lib.count(MediaLibrary.Category.ALL)}" +
+                " volumes=${Compat.externalVolumes(ctx).joinToString(",").ifEmpty { "none" }}" +
+                " full=${Compat.hasFullMediaAccess(ctx)} partial=${Compat.hasPartialMediaAccess(ctx)})"
+        )
         if (items.isEmpty()) {
             body.addView(emptyState())
             return
@@ -217,9 +225,19 @@ class FileManagerFragment(private val activity: Activity) : Screen {
      */
     private fun emptyState(): View {
         val ctx = activity
-        val readable = Compat.canReadMedia(ctx)
+        // Android 14 can leave the app holding only `READ_MEDIA_VISUAL_USER_SELECTED`: reading
+        // media works, but MediaStore then answers every query with just the items the user picked,
+        // so an empty grid is the platform being correct. That is not the same thing as "no
+        // permission", and it is not something to hide behind a silent empty state either - the
+        // one thing that fixes it is asking for the full grant again.
+        val partial = Compat.hasPartialMediaAccess(ctx)
+        val readable = Compat.canReadMedia(ctx) && !partial
         val col = W.emptyState(ctx, R.drawable.ic_nav_files, emptyText(),
-            if (readable) null else ctx.getString(R.string.storage_permission_needed))
+            when {
+                readable -> null
+                partial -> ctx.getString(R.string.partial_media_access)
+                else -> ctx.getString(R.string.storage_permission_needed)
+            })
         if (readable) return col
 
         col.addView(W.gap(ctx, 8))

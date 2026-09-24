@@ -26,6 +26,7 @@ import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Environment
 import android.os.PowerManager
+import android.provider.MediaStore
 import android.provider.Settings
 import android.view.View
 import android.view.WindowManager
@@ -44,6 +45,7 @@ object Compat {
     val isApi30 get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
     val isApi31 get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val isApi33 get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+    val isApi34 get() = Build.VERSION.SDK_INT >= 34
 
     // ---- notifications -----------------------------------------------------
 
@@ -211,6 +213,42 @@ object Compat {
         isApi33 -> MEDIA_GRANTS_33.any { checkSelf(ctx, it) }
         isApi23 -> checkSelf(ctx, android.Manifest.permission.READ_EXTERNAL_STORAGE)
         else -> true
+    }
+
+    /**
+     * The full media grant, i.e. the app may see *every* photo, video and track.
+     *
+     * Android 14 offers a middle state: the user picks a handful of pictures and the app is left
+     * holding only `READ_MEDIA_VISUAL_USER_SELECTED`. [canReadMedia] is true in that state - the app
+     * really can read media - but MediaStore then filters every query down to the selected items,
+     * so a library that looks empty is the platform doing its job rather than a bug. The two
+     * questions ("may I read media at all" and "may I read all of it") are different, so they are
+     * asked separately.
+     */
+    fun hasFullMediaAccess(ctx: Context): Boolean = when {
+        hasAllFilesAccess(ctx) -> true
+        isApi33 -> checkSelf(ctx, "android.permission.READ_MEDIA_IMAGES") ||
+            checkSelf(ctx, "android.permission.READ_MEDIA_VIDEO")
+        isApi23 -> checkSelf(ctx, android.Manifest.permission.READ_EXTERNAL_STORAGE)
+        else -> true
+    }
+
+    /** True when Android 14 gave the app only the user-selected subset of the library. */
+    fun hasPartialMediaAccess(ctx: Context): Boolean =
+        isApi34 && !hasFullMediaAccess(ctx) &&
+            checkSelf(ctx, "android.permission.READ_MEDIA_VISUAL_USER_SELECTED")
+
+    /**
+     * The MediaStore volumes this device actually has. "external" is the legacy name for the
+     * primary volume and is what the library queries; on Android 10+ the real names are
+     * `external_primary` and the SD card's UUID, and seeing them in a bug report is the difference
+     * between "the phone has no media" and "the app is asking the wrong volume".
+     */
+    fun externalVolumes(ctx: Context): List<String> = try {
+        if (isApi29) MediaStore.getExternalVolumeNames(ctx).toList().sorted()
+        else listOf("external")
+    } catch (t: Throwable) {
+        emptyList()
     }
 
     /** Android 11+ can hand out all-files access; older versions go through the app settings. */

@@ -272,7 +272,12 @@ jobs:
   smoke:
     name: Install and drive the app on an emulator
     needs: build
-    runs-on: ubuntu-latest
+    # Pinned on purpose: this job is the only thing standing between a compile and a release, and
+    # what decides whether it can run at all is the runner image - the emulator, the system image
+    # and KVM - not this repository. 24.04 is spelled out rather than left to `ubuntu-latest` so a
+    # label rollout cannot change the emulator underneath a release; 22.04 entered deprecation
+    # (with scheduled brownouts) on 2026-09-17, so it is deliberately not used here.
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -299,6 +304,7 @@ jobs:
       # The release APK is the artifact users install, so the test installs and drives exactly
       # that file. A crash on launch fails the job and blocks the release.
       - name: Install and drive the app
+        id: drive
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
@@ -311,6 +317,30 @@ jobs:
           script: |
             export MORSE_MEDIA_DIR="$PWD/tools/media-seed"
             bash tools/ci_smoke.sh "${{ needs.build.outputs.version }}"
+
+      # The emulator step fails as a single "the process '/usr/bin/sh' failed with exit code 1"
+      # when something goes wrong before the test script gets a chance to run - and the job log is
+      # not always reachable. These breadcrumbs make the difference between "the app is broken" and
+      # "the emulator never started" readable from the check-run API alone.
+      - name: Smoke diagnostics
+        if: always()
+        env:
+          OUTCOME: ${{ steps.drive.outcome }}
+        run: |
+          echo "::notice title=smoke-diag::emulator step outcome=${OUTCOME:-unknown}"
+          if [ -f /tmp/smoke.started ]; then
+            echo "::notice title=smoke-diag::shell started: $(cat /tmp/smoke.started)"
+          else
+            echo "::error title=smoke-diag::the smoke script never started - the emulator or the avd setup failed before it could run"
+          fi
+          if [ -f /tmp/smoke.exit ]; then
+            echo "::notice title=smoke-diag::smoke script exit code: $(cat /tmp/smoke.exit)"
+          else
+            echo "::error title=smoke-diag::the smoke script left no exit code behind"
+          fi
+          echo "::notice title=smoke-diag::screenshots on disk: $(ls -1 screenshots/*.png 2>/dev/null | wc -l)"
+          ls -la /tmp/smoke.log 2>/dev/null || echo "::debug title=smoke-diag::no smoke log"
+          tail -5 /tmp/smoke.log 2>/dev/null || true
 
       - name: Upload emulator screenshots
         if: always()

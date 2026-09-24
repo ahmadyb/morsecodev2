@@ -187,6 +187,7 @@
     <string name="loading_more">Loading more\u2026</string>
     <string name="empty_state_files_hint">Files you send and receive will be listed here.</string>
     <string name="storage_permission_needed">Storage permission is needed to read your files.</string>
+    <string name="partial_media_access">Only the photos and videos you selected are visible. Allow access to your whole library?</string>
     <string name="grant">Grant</string>
     <string name="all_files_access">Allow all files access</string>
     <string name="all_files_access_hint">Only needed to browse documents and other non-media folders.</string>

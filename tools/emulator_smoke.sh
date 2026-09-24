@@ -40,6 +40,11 @@ ok()   { printf '   \033[32mok\033[0m   %s\n' "$*"; }
 
 # A failed check is also surfaced as a workflow annotation: the job log is not always reachable
 # (rate limits, expired artifacts, sandboxes), but the check-run annotation API always is.
+#
+# The annotation budget is finite - a step keeps roughly its first ten and silently drops the
+# rest - so `note` is deliberately log-only and the handful of facts that answer "is the app
+# reading the library, and what is it showing" go through `ann`. A failure is always an error
+# annotation, and that is what the budget is being saved for.
 bad()  {
   printf '   \033[31mFAIL\033[0m %s\n' "$*"
   [ "$IN_CI" = "yes" ] && echo "::error title=smoke::$(printf '%s' "$*")"
@@ -47,8 +52,10 @@ bad()  {
 }
 note() {
   printf '   \033[36mnote\033[0m %s\n' "$*"
-  [ "$IN_CI" = "yes" ] && echo "::notice title=smoke::$(printf '%s' "$*")"
+  [ "$IN_CI" = "yes" ] && echo "::debug title=smoke::$(printf '%s' "$*")"
 }
+# Curated annotation: log line plus a real notice that survives in the check run.
+ann()  { printf '   \033[35mann\033[0m %s\n' "$*"; [ "$IN_CI" = "yes" ] && echo "::notice title=smoke::$(printf '%s' "$*")"; }
 
 last_error=""
 # `set -e` is deliberately off: every check is evaluated and reported, so one run shows
@@ -143,6 +150,16 @@ check "release APK installs" adb install -r -g "$RELEASE_APK"
 [ -n "$DEBUG_APK" ] && check "debug APK installs" adb install -r -g "$DEBUG_APK"
 adb logcat -c >/dev/null 2>&1 || true
 
+# `adb install -g` is supposed to grant every runtime permission the manifest declares, but on
+# Android 14 a media app can end up holding only READ_MEDIA_VISUAL_USER_SELECTED - full access is
+# then reported as granted while MediaStore quietly filters every query down to the items the user
+# picked (none, on a fresh emulator). Granting the three documented media permissions explicitly
+# removes that ambiguity from the test, before the app is ever launched.
+say "Runtime media grants"
+for P in READ_MEDIA_IMAGES READ_MEDIA_VIDEO READ_MEDIA_AUDIO; do
+  adb shell pm grant "$PACKAGE" "android.permission.$P" >/dev/null 2>&1 &&     ok "granted android.permission.$P" || note "could not grant $P (not declared below API 33?)"
+done
+
 say "Seed the emulator with media"
 # Three tiny images so the Files tab exercises MediaStore paging, thumbnails and day grouping
 # instead of only its empty state. `MEDIA_SCANNER_SCAN_FILE` has been a no-op since Android 10, so
@@ -151,7 +168,7 @@ say "Seed the emulator with media"
 # through sh and the exported variable did not survive it, so the seed silently did nothing.
 SEED_DIR="${MORSE_MEDIA_DIR:-$HERE/media-seed}"
 SEED_COUNT=$(ls -1 "$SEED_DIR" 2>/dev/null | wc -l)
-note "seed directory: $SEED_DIR ($SEED_COUNT file(s))"
+ann "seed directory: $SEED_DIR ($SEED_COUNT file(s))"
 if [ "$SEED_COUNT" -gt 0 ]; then
   adb shell "mkdir -p /sdcard/Pictures" >/dev/null 2>&1 || true
   if adb push "$SEED_DIR/." /sdcard/Pictures/ >/dev/null 2>&1; then
@@ -159,7 +176,7 @@ if [ "$SEED_COUNT" -gt 0 ]; then
     adb reboot >/dev/null 2>&1 || true
     sleep 5
     if wait_boot; then
-      note "rebooted so MediaProvider rescans the volume"
+      ann "rebooted so MediaProvider rescans the volume"
     else
       bad "the device did not come back after the media seed reboot"
     fi
@@ -177,7 +194,7 @@ adb shell "content call --uri content://media/external/images/media --method sca
 sleep 5
 RAW=$(adb shell "content query --uri content://media/external/images/media --projection _id,_display_name" 2>&1 | head -5)
 COUNT=$(printf '%s' "$RAW" | grep -c "_id" || true)
-note "MediaStore images: ${COUNT:-0} row(s)"
+ann "MediaStore images: ${COUNT:-0} row(s)"
 if [ "${COUNT:-0}" = "0" ]; then
   note "raw query answer: $(printf '%s' "$RAW" | tr '\n' ' ' | head -c 300)"
   note "files on device: $(adb shell 'ls /sdcard/Pictures' 2>/dev/null | tr '\n' ' ' | head -c 200)"
@@ -221,14 +238,20 @@ printf '%s\n' "$APP_LOG" | sed 's/^/   /'
 # Anything the app logged about a failure is worth an annotation: those lines carry the reason a
 # screen came up empty, and they are otherwise buried in the job log.
 printf '%s\n' "$APP_LOG" | grep -iE "fail|error|denied|exception" | tail -6 \
-  | while IFS= read -r line; do [ -n "$line" ] && note "app log: $line"; done
-GRANTS=$(adb shell "dumpsys package $PACKAGE" 2>/dev/null | grep -E "READ_MEDIA|READ_EXTERNAL" | head -4 | tr -s ' ')
-note "granted media permissions: $(printf '%s' "$GRANTS" | tr '\n' ' ')"
+  | while IFS= read -r line; do [ -n "$line" ] && ann "app log: $line"; done
+# `dumpsys package` prints the *declared* permissions in one section and the *granted* ones in
+# `runtime permissions:` - grep alone picks up both, which once hid that the app only held
+# READ_MEDIA_VISUAL_USER_SELECTED. Only the runtime section is a statement about access.
+RUNTIME=$(adb shell "dumpsys package $PACKAGE" 2>/dev/null | sed -n '/runtime permissions:/,/^$/p')
+GRANTED=$(printf '%s' "$RUNTIME" | grep -E "READ_MEDIA|READ_EXTERNAL" | grep -c "granted=true" || true)
+DENIED=$(printf '%s' "$RUNTIME" | grep -E "READ_MEDIA|READ_EXTERNAL" | grep -c "granted=false" || true)
+PARTIAL=$(printf '%s' "$RUNTIME" | grep -c "READ_MEDIA_VISUAL_USER_SELECTED" || true)
+ann "media grants at runtime: ${GRANTED:-0} granted, ${DENIED:-0} denied, partial-access entry=${PARTIAL:-0}"
 # `content` wants colon-separated columns, and the row's own fields (mime, size) are what decide
 # whether the app's `mime_type LIKE 'image/%' AND _size > 0` filter can even match.
 # `content` takes colon-separated columns and the *table's* own names (mime_type, _size).
 ROW=$(adb shell "content query --uri content://media/external/images/media --projection _id:mime_type:_size" 2>&1 | head -3 | tr '\n' ' ')
-note "images table row: $(printf '%s' "$ROW" | head -c 300)"
+ann "images table row: $(printf '%s' "$ROW" | head -c 300)"
 note "device media dirs: $(adb shell 'ls /sdcard/Pictures /sdcard/DCIM 2>/dev/null' 2>/dev/null | tr '\n' ' ' | head -c 200)"
 # The app now logs its own library counts, so the app log above is the authoritative answer for
 # what it can see; shell queries are only here to show what the platform holds.
@@ -250,6 +273,7 @@ fi
 NAV_Y=$(( H - H * 6 / 100 ))
 say "Bottom navigation (screen ${W}x${H}, taps at y=$NAV_Y)"
 TABS=("connect" "files" "history" "settings")
+TAPS=""
 LABELS=("Connect" "Files" "History" "Settings")
 
 # Prefer the real bounds of the nav label from the view hierarchy: tapping a fixed fraction of
@@ -286,6 +310,7 @@ for i in 0 1 2 3; do
     X=$(( W * (2 * i + 1) / 8 )); Y=$NAV_Y
   fi
   note "tap ${LABELS[$i]} at $X,$Y ($([ "$TAPPED" = yes ] && echo hierarchy || echo fallback))"
+  TAPS="$TAPS ${LABELS[$i]}@$X,$Y"
   adb shell input tap "$X" "$Y" >/dev/null 2>&1
   sleep 3
   shot "tab-$((i + 1))-${TABS[$i]}"
@@ -302,9 +327,9 @@ for i in 0 1 2 3; do
       ok "the Files tab does not ask for storage permission"
     fi
     if screen_shows "Today"; then
-      note "the Files tab is rendering media"
+      ann "the Files tab is rendering media"
     else
-      note "the Files tab shows its empty state (no media on the device)"
+      ann "the Files tab shows its empty state (no media on the device)"
     fi
     if screen_shows "Apps" && screen_shows "Documents"; then
       ok "all five category tabs are present"
@@ -313,6 +338,14 @@ for i in 0 1 2 3; do
 done
 check "no crash from $PACKAGE after walking the tabs" no_fatal
 report_crashes
+ann "tapped the four tabs:$TAPS"
+
+# What the app itself says it can see. MediaStore is filtered per *calling uid*, so a shell query
+# that returns rows is not proof the app can read them; this line is written by the grid itself.
+FILES_TAIL=$(adb logcat -d -s "$LOGCAT_TAG":V 2>/dev/null | grep -o "Files: .*" | tail -2 | tr '\n' ' ')
+[ -n "$FILES_TAIL" ] && ann "app files view: $FILES_TAIL"
+ERR_TAIL=$(adb logcat -d -s "$LOGCAT_TAG":V 2>/dev/null | grep -iE "fail|error|denied|permission" | tail -3 | tr '\n' ' ')
+[ -n "$ERR_TAIL" ] && ann "app log lines: $ERR_TAIL"
 
 say "Back stack sweep"
 adb shell input keyevent 4 >/dev/null 2>&1
