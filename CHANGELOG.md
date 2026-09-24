@@ -4,6 +4,28 @@ All notable changes to MorseCode. Releases are built and published by GitHub Act
 `v1.2.3` becomes `versionName 1.2.3`, `versionCode 10203`, and the tag is created on the commit
 the artifacts were built from.
 
+## 1.0.3 — the popups say what they say, and the browser surface is proven
+
+### Fixed
+- **Consent popups showed no copy.** `Ui.consent()` added its Accept/Reject row inside the
+  dialog's `onShow` with a second `setContentView`, which *replaces* the view the dialog was
+  built with — so "Connection request" and "Browser wants access" came up as two lone buttons and
+  none of the text the spec pins verbatim (title, body, `<device> · <transport> · <ip>`). The
+  buttons are now part of the same content view, and the emulator gate asserts the words are on
+  screen before it taps Accept.
+- **WebShare carries no QR at all.** The browser page still had a "▦ QR" sidebar entry leading to
+  a "QR codes are disabled" placeholder, and `/api/qr` answered with an empty QR-shaped response.
+  The nav item, the page, the route and the endpoint are gone: WebShare shows the address in its
+  header and nothing QR-shaped anywhere (as the product decision says).
+
+### Added
+- **The gate drives WebShare end to end.** After walking the tabs, the emulator run starts
+  WebShare from the Connect card, reaches it over `adb forward` exactly as a laptop on the same
+  Wi-Fi would, and checks the four things that matter: an unconsented browser gets only the
+  waiting page; the phone asks *"Browser wants access"* with the exact copy; once accepted the
+  browser gets the real file browser with no QR and working media counts (`/api/counts`); and
+  Stop WebShare closes it again.
+
 ## 1.0.2 — the Files tab actually fills
 
 ### Fixed

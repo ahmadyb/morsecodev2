@@ -224,7 +224,6 @@ tr:hover td{background:var(--card-2)}
       <div class="navitem" data-nav="docs">📄 Docs <span class="count" id="c-docs">0</span></div>
       <div class="navitem" data-nav="apps">📦 Apps <span class="count" id="c-apps">0</span></div>
       <div class="navitem" data-nav="files">🗂 Files</div>
-      <div class="navitem" data-nav="qr">▦ QR</div>
       <div class="folders" id="folders"></div>
     </aside>
     <main>
@@ -376,7 +375,6 @@ function render(){
   el("selbar").className=state.selectedCount?"selbar":"selbar";
   if(state.page==="home") return renderHome(v);
   if(state.page==="files") return renderFiles(v);
-  if(state.page==="qr") return renderQr(v);
   return renderCategory(v, state.page);
 }
 
@@ -748,14 +746,6 @@ function uploadFiles(files){
   };
   xhr.onerror=function(){ if(box){box.className="upload";} toast("Upload failed"); };
   xhr.send(fd);
-}
-
-/* ---------------- QR (disabled by product decision: WebShare shows no QR) ---------------- */
-function renderQr(v){
-  v.innerHTML='<div class="sectionhead"><h2>QR</h2></div>' +
-    '<div class="card"><b>QR codes are disabled in this build</b>' +
-    '<p style="color:var(--text-2)">Type the address shown in the header into the browser address bar on the other device.</p>' +
-    '<div class="urltext" style="max-width:100%">'+(BOOT.url||"")+'</div></div>';
 }
 
 /* ---------------- transfer summary popup ---------------- */

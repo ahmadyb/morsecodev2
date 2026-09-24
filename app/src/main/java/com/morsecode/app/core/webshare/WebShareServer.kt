@@ -233,8 +233,8 @@ class WebShareServer(
             }
             "/api/files" -> respondJson(req, 200, filesJson(req.query))
             "/api/fs" -> respondJson(req, 200, fsJson(req.query))
-            "/api/qr" -> respondJson(req, 200, JSONObject().put("qrDisabled", true)
-                .put("url", info().url).toString())
+            // WebShare deliberately shows no QR code, so there is no /api/qr: a client that
+            // asks for one gets the standard 404 rather than an empty QR-shaped answer.
             "/thumbnail" -> respondThumbnail(req)
             "/download" -> respondMedia(req)
             "/download-file" -> respondFile(req)

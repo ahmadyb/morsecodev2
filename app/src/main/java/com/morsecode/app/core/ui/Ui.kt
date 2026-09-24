@@ -266,31 +266,33 @@ object Ui {
         card.addView(W.label(activity, subtitle, 12f, ThemeColors.text2(activity), mono = true))
         content.addView(card)
 
+        // The buttons are part of the same content view. They used to be added in `onShow` with a
+        // second setContentView, which *replaces* the view the dialog was built with - so the
+        // popup came up as two lone buttons and none of the copy the spec pins down verbatim
+        // ("Connection request", "Browser wants access", the device/transport/IP line).
+        content.addView(W.gap(activity, 8))
+        val row = W.row(activity)
+        row.pad(8, 0, 8, 8)
+        val reject = W.outlineButton(activity, rejectLabel)
+        val accept = W.successButton(activity, acceptLabel)
+        val lpReject = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        lpReject.setMargins(D.dp(activity, 6f), 0, D.dp(activity, 6f), 0)
+        val lpAccept = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        lpAccept.setMargins(D.dp(activity, 6f), 0, D.dp(activity, 6f), 0)
+        row.addView(reject, lpReject)
+        row.addView(accept, lpAccept)
+        content.addView(row)
+
         val dialog = AlertDialog.Builder(activity).setView(content).setCancelable(false).create()
         dialog.setCanceledOnTouchOutside(false)
-        dialog.setOnShowListener(object : DialogInterface.OnShowListener {
-            override fun onShow(d: DialogInterface?) {
-                val row = W.row(activity)
-                row.pad(8, 0, 8, 8)
-                val reject = W.outlineButton(activity, rejectLabel)
-                val accept = W.successButton(activity, acceptLabel)
-                val lpReject = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-                lpReject.setMargins(D.dp(activity, 6f), 0, D.dp(activity, 6f), 0)
-                val lpAccept = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-                lpAccept.setMargins(D.dp(activity, 6f), 0, D.dp(activity, 6f), 0)
-                row.addView(reject, lpReject)
-                row.addView(accept, lpAccept)
-                dialog.setContentView(row)
-                reject.onClick {
-                    dialog.dismiss()
-                    onAnswer(false)
-                }
-                accept.onClick {
-                    dialog.dismiss()
-                    onAnswer(true)
-                }
-            }
-        })
+        reject.onClick {
+            dialog.dismiss()
+            onAnswer(false)
+        }
+        accept.onClick {
+            dialog.dismiss()
+            onAnswer(true)
+        }
         dialog.show()
     }
 

@@ -365,6 +365,128 @@ FILES_TAIL=$(adb logcat -d -s "$LOGCAT_TAG":V 2>/dev/null | grep -o "Files: .*" 
 ERR_TAIL=$(adb logcat -d -s "$LOGCAT_TAG":V 2>/dev/null | grep -iE "fail|error|denied|permission" | tail -3 | tr '\n' ' ')
 [ -n "$ERR_TAIL" ] && note "app log lines: $ERR_TAIL"
 
+# ------------------------------------------------------------------ WebShare
+# The browser surface is one of the four things this app is, and "it starts" is not the same as
+# "a browser can use it". The emulator's own network is enough to prove both: `adb forward` puts
+# the phone's port on the runner's loopback, so the test speaks to the phone exactly as a laptop
+# on the same Wi-Fi would - waiting page first, until the phone holder accepts, then the app.
+say "WebShare end to end"
+WS_STARTED=0
+
+# Back to Connect and flip the WebShare switch. The switch is found in the hierarchy rather than
+# guessed at, because the card moves with the content above it.
+BOUNDS=$(label_bounds "Connect" || true)
+if [ -n "$BOUNDS" ]; then
+  set -- $(printf '%s' "$BOUNDS" | grep -o '[0-9]*')
+  if [ "$#" -ge 4 ]; then adb shell input tap "$(( ($1 + $3) / 2 ))" "$(( ($2 + $4) / 2 ))" >/dev/null 2>&1; fi
+fi
+sleep 2
+
+webswitch_bounds() {
+  dump_ui | tr '>' '\n' | grep 'class="android.widget.Switch"' \
+    | grep -o 'bounds="\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]"' | head -1
+}
+
+WS=$(webswitch_bounds)
+if [ -n "$WS" ]; then
+  set -- $(printf '%s' "$WS" | grep -o '[0-9]*')
+  if [ "$#" -ge 4 ]; then
+    adb shell input tap "$(( ($1 + $3) / 2 ))" "$(( ($2 + $4) / 2 ))" >/dev/null 2>&1
+    sleep 3
+  fi
+else
+  bad "no WebShare switch on the Connect tab"
+fi
+
+if adb logcat -d -s "$LOGCAT_TAG":V 2>/dev/null | grep -q "WebShare mode started"; then
+  ok "WebShare started"
+  WS_STARTED=1
+else
+  bad "WebShare did not start (see the app log; the emulator may have no Wi-Fi)"
+fi
+
+if [ "$WS_STARTED" = "1" ]; then
+  URL=$(adb logcat -d -s "$LOGCAT_TAG":V 2>/dev/null | grep -o "WebShare mode started - http[^ ]*" | tail -1 | sed 's/.*- //')
+  ann "WebShare is serving $URL"
+  adb forward tcp:33455 tcp:33455 >/dev/null 2>&1 || true
+
+  # 1. Before consent the browser must not see the phone's files - only the waiting page.
+  WAIT_HTML=$(curl -s -m 10 http://127.0.0.1:33455/ 2>/dev/null)
+  if [ -z "$WAIT_HTML" ]; then
+    bad "nothing answered on the WebShare port"
+  elif printf '%s' "$WAIT_HTML" | grep -qi "accept\|waiting\|pending"; then
+    ok "an unconsented browser gets the waiting page"
+  else
+    bad "an unconsented browser got the app instead of the waiting page"
+  fi
+
+  # 2. The phone asks. Accept it the way a person would: tap the button by name.
+  # The copy is pinned by the spec, and the popup spent a while showing two bare buttons because
+  # the button row was set as the dialog's content view, replacing the card that held the words.
+  if screen_shows "Browser wants access"; then
+    ok "the consent popup shows the exact copy"
+    if screen_shows "A browser session wants to browse your phone."; then
+      ok "the consent popup shows the exact body line"
+    else
+      bad "the consent popup is missing its body line"
+    fi
+  else
+    bad "no 'Browser wants access' copy on screen while a browser session waits"
+  fi
+  CONSENT=$(label_bounds "Accept" || true)
+  if [ -n "$CONSENT" ]; then
+    set -- $(printf '%s' "$CONSENT" | grep -o '[0-9]*')
+    if [ "$#" -ge 4 ]; then
+      ok "the phone asked 'Browser wants access'"
+      adb shell input tap "$(( ($1 + $3) / 2 ))" "$(( ($2 + $4) / 2 ))" >/dev/null 2>&1
+      sleep 3
+    fi
+  else
+    bad "no 'Browser wants access' consent appeared for the browser session"
+  fi
+
+  # 3. Now the browser gets the real app, and it carries no QR code (product decision).
+  SPA=$(curl -s -m 15 http://127.0.0.1:33455/ 2>/dev/null)
+  if printf '%s' "$SPA" | grep -q "data-nav=\"photos\""; then
+    ok "the consented browser gets the file browser"
+    if printf '%s' "$SPA" | grep -qi "data-nav=\"qr\"\|>QR<\|qr code"; then
+      bad "the browser page mentions a QR code although WebShare shows none"
+    else
+      ok "the browser page has no QR"
+    fi
+    COUNTS=$(curl -s -m 10 http://127.0.0.1:33455/api/counts 2>/dev/null | head -c 200)
+    note "browser counts: $COUNTS"
+    if printf '%s' "$COUNTS" | grep -q "photos"; then
+      ok "the browser can count the phone's media"
+    else
+      bad "the browser cannot read the media counts: $COUNTS"
+    fi
+    # INV-5: a music player that survives navigation is served as part of the same document.
+    if printf '%s' "$SPA" | grep -q "audio"; then
+      ok "the player is served with the browser"
+    fi
+  else
+    bad "the consented browser did not get the file browser"
+    note "first 200 bytes: $(printf '%s' "$SPA" | head -c 200)"
+  fi
+  shot web-share-served
+
+  # 4. Stop it, from the phone, and confirm the port closes (no idle teardown, INV-4, but an
+  #    explicit one that works).
+  STOP=$(label_bounds "Stop WebShare" || true)
+  if [ -n "$STOP" ]; then
+    set -- $(printf '%s' "$STOP" | grep -o '[0-9]*')
+    if [ "$#" -ge 4 ]; then adb shell input tap "$(( ($1 + $3) / 2 ))" "$(( ($2 + $4) / 2 ))" >/dev/null 2>&1; fi
+    sleep 2
+  fi
+  if adb logcat -d -s "$LOGCAT_TAG":V 2>/dev/null | grep -q "WebShare stopped by user"; then
+    ok "WebShare stops when the user stops it"
+  else
+    note "the Stop button was not found or did not log a stop"
+  fi
+  adb forward --remove tcp:33455 >/dev/null 2>&1 || true
+fi
+
 say "Back stack sweep"
 adb shell input keyevent 4 >/dev/null 2>&1
 sleep 2
