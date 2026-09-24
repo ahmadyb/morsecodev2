@@ -24,7 +24,10 @@ the artifacts were built from.
   Wi-Fi would, and checks the four things that matter: an unconsented browser gets only the
   waiting page; the phone asks *"Browser wants access"* with the exact copy; once accepted the
   browser gets the real file browser with no QR and working media counts (`/api/counts`); and
-  Stop WebShare closes it again.
+  Stop WebShare closes it again. It also toggles the theme switch in Settings and asks the
+  browser what it is being served (`/api/hello` reports it), so the dark = a-series / light =
+  b-series requirement is exercised rather than assumed, and each run publishes only the
+  screenshots it captured.
 
 ## 1.0.2 — the Files tab actually fills
 
