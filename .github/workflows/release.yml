@@ -44,18 +44,40 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      # Plain shell instead of a marketplace action: the runner image already ships the SDK,
+      # and this only has to fill in the two platforms and one build-tools version we pin.
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install SDK platforms and build-tools
         run: |
-          yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          sdkmanager --install "platforms;android-34" "build-tools;34.0.0" > /dev/null
-          # android-23 is what the app compiles against so an old device can never hit a
-          # missing symbol; the offline builder needs the jar for its second compile pass.
-          sdkmanager --install "platforms;android-23" > /dev/null
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          ls "$ANDROID_HOME/platforms"
+          set -euo pipefail
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+
+          SDKMGR="$(command -v sdkmanager || true)"
+          if [ -z "$SDKMGR" ]; then
+            for candidate in "$SDK"/cmdline-tools/latest/bin/sdkmanager "$SDK"/cmdline-tools/*/bin/sdkmanager; do
+              [ -x "$candidate" ] && SDKMGR="$candidate" && break
+            done
+          fi
+          if [ -z "$SDKMGR" ]; then
+            echo "sdkmanager missing - fetching the command line tools"
+            mkdir -p /tmp/cmdline && cd /tmp/cmdline
+            curl -fsSL -o tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+            unzip -q tools.zip
+            mkdir -p "$SDK/cmdline-tools"
+            mv cmdline-tools "$SDK/cmdline-tools/latest"
+            SDKMGR="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          fi
+          echo "using $SDKMGR"
+
+          yes | "$SDKMGR" --sdk_root="$SDK" --licenses > /dev/null 2>&1 || true
+          # android-23 is what the app sources compile against so an old device can never hit a
+          # missing symbol, and the offline fallback builder needs that jar for its second pass.
+          "$SDKMGR" --sdk_root="$SDK" --install "platforms;android-34" "platforms;android-23" "build-tools;34.0.0"
+          echo "$SDK/platform-tools" >> "$GITHUB_PATH"
+          echo "$SDK/build-tools/34.0.0" >> "$GITHUB_PATH"
+          ls "$SDK/platforms"
+          ls "$SDK/build-tools"
 
       - name: Set up Gradle 8.7
         uses: gradle/actions/setup-gradle@v3
@@ -79,7 +101,6 @@ jobs:
           curl -fsSL -o /tmp/kotlin.zip \
             https://github.com/JetBrains/kotlin/releases/download/v1.9.24/kotlin-compiler-1.9.24.zip
           unzip -q /tmp/kotlin.zip -d /tmp/kotlin
-          export MC_DEXER=d8
           python3 tools/offline_build.py \
             --jdk "$JAVA_HOME" \
             --kotlinc /tmp/kotlin/kotlinc/bin/kotlinc \
