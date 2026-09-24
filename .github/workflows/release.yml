@@ -140,10 +140,12 @@ jobs:
           unzip -q /tmp/kotlin.zip -d /tmp
           export KOTLINC_PATH=/tmp/kotlinc/bin/kotlinc
           export JAVA_OPTS="-Xmx3g -XX:MaxMetaspaceSize=768m"
-          if ! python3 tools/offline_build.py > /tmp/offline.log 2>&1; then
-            tail -40 /tmp/offline.log | while IFS= read -r line; do
-              line="${line//$'\r'/}"
-              echo "::error title=offline-build::${line:0:800}"
+          set +e
+          python3 tools/offline_build.py 2>&1 | tee /tmp/offline.log
+          OFF=${PIPESTATUS[0]}
+          if [ "$OFF" -ne 0 ]; then
+            tail -30 /tmp/offline.log | while IFS= read -r line; do
+              [ -n "$line" ] && echo "::error title=offline-build::${line:0:800}"
             done
             exit 1
           fi
@@ -243,8 +245,16 @@ jobs:
       # check inside the script fails the job if the runtime is ever missing again.
       - name: Build with tools/offline_build.py
         run: |
+          set +e
           export JAVA_OPTS="-Xmx3g -XX:MaxMetaspaceSize=768m"
-          python3 tools/offline_build.py
+          python3 tools/offline_build.py 2>&1 | tee /tmp/offline.log
+          STATUS=${PIPESTATUS[0]}
+          if [ "$STATUS" -ne 0 ]; then
+            tail -30 /tmp/offline.log | while IFS= read -r line; do
+              [ -n "$line" ] && echo "::error title=offline-build::${line:0:800}"
+            done
+          fi
+          exit "$STATUS"
 
       - name: Re-check the produced APKs
         run: |

@@ -71,27 +71,44 @@ def find_tool(explicit, env_names, candidates, what):
     )
 
 
-def sdk_candidates(child):
-    """
-    Where an Android SDK may be hiding - including the layout a GitHub runner leaves behind after
-    the shell `sdkmanager` step, so the offline fallback in CI uses build-tools 34 (d8) and the
-    platform jars it already downloaded instead of failing with "no build-tools found".
-    """
-    out = []
+def sdk_roots():
+    """Every directory that might be an Android SDK root."""
     for root in (os.environ.get("ANDROID_HOME"), os.environ.get("ANDROID_SDK_ROOT"),
                  "/tmp/tools/asdk", "/opt/android-sdk", os.path.expanduser("~/Android/Sdk")):
-        if not root:
-            continue
-        base = os.path.join(root, child)
+        if root and os.path.isdir(root):
+            yield root
+
+
+def build_tools_candidates():
+    """
+    Versioned build-tools directories, newest first, under any SDK root.
+
+    This is what a GitHub runner leaves behind after the shell `sdkmanager` step, so the offline
+    fallback uses build-tools 34 (d8) instead of failing with "no build-tools found".
+    """
+    out = []
+    for root in sdk_roots():
+        base = os.path.join(root, "build-tools")
         if os.path.isdir(base):
             out.extend(sorted((os.path.join(base, d) for d in os.listdir(base)), reverse=True))
-    # `ANDROID_BUILD_TOOLS` may point straight at the versioned directory (CI sets it up that way).
     pinned = os.environ.get("ANDROID_BUILD_TOOLS")
-    if child == "build-tools" and pinned:
-        for root in (os.environ.get("ANDROID_HOME"), os.environ.get("ANDROID_SDK_ROOT")):
-            if root:
-                out.insert(0, os.path.join(root, child, pinned))
+    if pinned:
+        for root in sdk_roots():
+            candidate = os.path.join(root, "build-tools", pinned)
+            if os.path.isdir(candidate):
+                out.insert(0, candidate)
     return out
+
+
+def platform_candidates():
+    """
+    Directories *containing* one folder per platform, e.g. `$ANDROID_HOME/platforms`.
+
+    Note the asymmetry with build-tools: the rest of the builder joins
+    `<platforms>/android-23/android.jar`, so this must return the parent, not a version folder.
+    """
+    return [os.path.join(root, "platforms") for root in sdk_roots()
+            if os.path.isdir(os.path.join(root, "platforms"))]
 
 
 def tools(args, need_kotlinc=True):
@@ -108,7 +125,7 @@ def tools(args, need_kotlinc=True):
     bt = find_tool(
         args.build_tools,
         ["ANDROID_BUILD_TOOLS"],
-        sdk_candidates("build-tools")
+        build_tools_candidates()
         + [
             "/tmp/tools/asdk/build-tools/26.0.2",
             os.path.join(ROOT, "tools", "build-tools"),
@@ -118,7 +135,7 @@ def tools(args, need_kotlinc=True):
     platforms = find_tool(
         args.platforms,
         ["ANDROID_PLATFORMS"],
-        sdk_candidates("platforms")
+        platform_candidates()
         + [
             "/tmp/tools/apl",
             os.path.join(ROOT, "tools", "platforms"),

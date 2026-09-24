@@ -9,6 +9,10 @@ app/build/
 dist/
 /screenshots/
 
+# python tooling
+__pycache__/
+*.pyc
+
 # ide / os
 .idea/
 *.iml
