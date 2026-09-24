@@ -89,6 +89,20 @@ jobs:
           echo "MC_VERSION_CODE=$CODE" >> "$GITHUB_ENV"
           echo "versionName=$VER versionCode=$CODE"
 
+      - name: Resolve release tag
+        id: meta
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+          elif [ -n "${{ inputs.tag }}" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="v${{ steps.ver.outputs.name }}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "release tag: $TAG"
+
       # aapt2-only, so a broken drawable/colour/string fails in seconds instead of after the
       # full Gradle build (which is exactly how `#8C2A1701` reached a runner once).
       - name: Validate resources
@@ -289,13 +303,20 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${{ needs.build.outputs.tag }}"
+          [ -n "$TAG" ] || { echo "::error title=tag::the release tag resolved to nothing"; exit 1; }
           test -f "out/MorseCode-${{ needs.build.outputs.version }}-release.apk" \
             || { echo "::error::nothing to publish"; exit 1; }
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
           git tag -f "$TAG" "$GITHUB_SHA"
-          git push -f origin "refs/tags/$TAG"
-          echo "::notice::${TAG} points at $GITHUB_SHA"
+          OUT=$(git push -f origin "refs/tags/$TAG" 2>&1); RC=$?
+          echo "::notice title=tag::${TAG} rc=${RC} $(printf '%s' "$OUT" | tail -2 | tr '\n' ' ')"
+          if [ "$RC" -eq 0 ]; then
+            echo "::notice title=tag::${TAG} points at $GITHUB_SHA"
+          else
+            # The release action creates the tag at target_commitish when it does not exist.
+            echo "::warning title=tag::could not push ${TAG} - letting the release step create it"
+          fi
 
       - name: Publish
         uses: softprops/action-gh-release@v2
