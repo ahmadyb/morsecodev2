@@ -89,6 +89,11 @@ jobs:
           echo "MC_VERSION_CODE=$CODE" >> "$GITHUB_ENV"
           echo "versionName=$VER versionCode=$CODE"
 
+      # aapt2-only, so a broken drawable/colour/string fails in seconds instead of after the
+      # full Gradle build (which is exactly how `#8C2A1701` reached a runner once).
+      - name: Validate resources
+        run: python3 tools/check_resources.py
+
       - name: Set up Gradle 8.7
         uses: gradle/actions/setup-gradle@v3
         with:
@@ -104,6 +109,7 @@ jobs:
             grep -E "^(e: |.*error: |FAILURE|Execution failed|Caused by)" /tmp/gradle.log | sort -u | head -60 | while IFS= read -r line; do
               echo "::error title=gradle::${line:0:800}"
             done
+            echo "::warning title=gradle::Gradle failed - falling back to the offline toolchain"
             echo "gradle_failed=true" >> "$GITHUB_OUTPUT"
           else
             echo "gradle_failed=false" >> "$GITHUB_OUTPUT"

@@ -71,7 +71,30 @@ def find_tool(explicit, env_names, candidates, what):
     )
 
 
-def tools(args):
+def sdk_candidates(child):
+    """
+    Where an Android SDK may be hiding - including the layout a GitHub runner leaves behind after
+    the shell `sdkmanager` step, so the offline fallback in CI uses build-tools 34 (d8) and the
+    platform jars it already downloaded instead of failing with "no build-tools found".
+    """
+    out = []
+    for root in (os.environ.get("ANDROID_HOME"), os.environ.get("ANDROID_SDK_ROOT"),
+                 "/tmp/tools/asdk", "/opt/android-sdk", os.path.expanduser("~/Android/Sdk")):
+        if not root:
+            continue
+        base = os.path.join(root, child)
+        if os.path.isdir(base):
+            out.extend(sorted((os.path.join(base, d) for d in os.listdir(base)), reverse=True))
+    # `ANDROID_BUILD_TOOLS` may point straight at the versioned directory (CI sets it up that way).
+    pinned = os.environ.get("ANDROID_BUILD_TOOLS")
+    if child == "build-tools" and pinned:
+        for root in (os.environ.get("ANDROID_HOME"), os.environ.get("ANDROID_SDK_ROOT")):
+            if root:
+                out.insert(0, os.path.join(root, child, pinned))
+    return out
+
+
+def tools(args, need_kotlinc=True):
     jdk = find_tool(
         args.jdk,
         ["JAVA_HOME"],
@@ -85,7 +108,8 @@ def tools(args):
     bt = find_tool(
         args.build_tools,
         ["ANDROID_BUILD_TOOLS"],
-        [
+        sdk_candidates("build-tools")
+        + [
             "/tmp/tools/asdk/build-tools/26.0.2",
             os.path.join(ROOT, "tools", "build-tools"),
         ],
@@ -94,31 +118,40 @@ def tools(args):
     platforms = find_tool(
         args.platforms,
         ["ANDROID_PLATFORMS"],
-        [
+        sdk_candidates("platforms")
+        + [
             "/tmp/tools/apl",
             os.path.join(ROOT, "tools", "platforms"),
         ],
         "Android platforms (android.jar)",
     )
-    kotlinc = find_tool(
-        args.kotlinc,
-        ["KOTLINC"],
-        [
-            "/tmp/pkgs/kc/package/bin/kotlinc",
-            os.path.join(ROOT, "tools", "kotlinc", "bin", "kotlinc"),
-        ],
-        "kotlinc",
-    )
+    # Resource-only work (tools/check_resources.py) does not need the Kotlin compiler at all.
+    kotlinc = None
+    if need_kotlinc:
+        kotlinc = find_tool(
+            args.kotlinc,
+            ["KOTLINC"],
+            [
+                "/tmp/pkgs/kc/package/bin/kotlinc",
+                os.path.join(ROOT, "tools", "kotlinc", "bin", "kotlinc"),
+            ],
+            "kotlinc",
+        )
     aapt2 = find_tool(
         args.aapt2,
         ["AAPT2"],
         [
+            # the copy that ships inside the build-tools we already located (this is the normal
+            # case on a CI runner: $ANDROID_HOME/build-tools/<ver>/aapt2)
+            os.path.join(bt, "aapt2"),
+            os.path.join(bt, "aapt2.exe"),
             "/tmp/pkgs/aapt/package/bin/x64/linux/aapt2",
             os.path.join(ROOT, "tools", "aapt2"),
         ],
         "aapt2",
     )
-    globals()["KOTLINC_PATH"] = kotlinc
+    if kotlinc:
+        globals()["KOTLINC_PATH"] = kotlinc
     return {
         "jdk": jdk,
         "java": java,
@@ -189,6 +222,7 @@ def staged_manifest():
     declared = text[idx:end].rstrip()
     patched = text[:idx] + declared + '\n    package="%s"' % APP_ID + text[end:]
     out = os.path.join(BUILD, "AndroidManifest.xml")
+    os.makedirs(BUILD, exist_ok=True)
     with open(out, "w", encoding="utf-8") as fh:
         fh.write(patched)
     return out

@@ -37,6 +37,16 @@ The script drives `aapt2 → kotlinc → dx → zipalign → apksigner` from loc
 the keystores on first run. It is the build of record for this repository because it runs in
 sandboxes with no access to Maven or the Gradle distribution.
 
+### 1b. Resource-only check (seconds, no Kotlin compiler needed)
+
+```bash
+python3 tools/check_resources.py     # aapt2 compile + link against android-34
+python3 tools/make_icons.py --check  # re-trace the logo and verify it against the artwork
+```
+
+`aapt2 compile` alone accepts resources that `aapt2 link` rejects, so this runs before the build
+in CI as well.
+
 ### 2. Gradle
 
 ```bash
@@ -73,10 +83,12 @@ adb install -r MorseCode-1.0.1-release.apk         # phones
 
 1. installs JDK 17, the Android SDK (platforms 23 + 34, build-tools 34.0.0) and Gradle 8.7,
    and derives the version from the tag (`v1.2.3` → `versionName 1.2.3`, `versionCode 10203`),
-2. builds `assembleDebug`, `assembleRelease` and `bundleRelease`,
-3. **if Gradle cannot reach Google Maven**, automatically falls back to `tools/offline_build.py`
-   (it downloads the Kotlin compiler and drives aapt2 → kotlinc → d8 → zipalign → apksigner),
-4. verifies the release signature with `apksigner` (the signer and signing schemes are reported
+2. links the resources with `tools/check_resources.py` (fast fail before the real build),
+3. builds `assembleDebug`, `assembleRelease` and `bundleRelease`,
+4. **if Gradle cannot reach Google Maven**, automatically falls back to `tools/offline_build.py`
+   (it downloads the Kotlin compiler and drives aapt2 → kotlinc → d8 → zipalign → apksigner,
+   reusing whatever build-tools and platform jars the runner already has),
+5. verifies the release signature with `apksigner` (the signer and signing schemes are reported
    as a workflow notice) and writes `SHA256SUMS.txt`,
 5. uploads the three artifacts and **publishes them on a GitHub release** (`v1.0.0` for branch
    pushes, or the pushed tag). The tag is (re)pointed at the built commit, never at `main`, so a

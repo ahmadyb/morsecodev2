@@ -9,8 +9,8 @@
     <path android:fillColor="#F5F5F5" android:pathData="M12.450,5.651 a1.561,1.561 0 1 0 3.122,0 a1.561,1.561 0 1 0 -3.122,0 Z"/>
     <path android:fillColor="#F5F5F5" android:pathData="M12.450,10.333 a1.561,1.561 0 1 0 3.122,0 a1.561,1.561 0 1 0 -3.122,0 Z"/>
     <path android:fillColor="#F5F5F5" android:pathData="M12.450,15.016 a1.561,1.561 0 1 0 3.122,0 a1.561,1.561 0 1 0 -3.122,0 Z"/>
-    <path android:fillColor="8CF5F5F5" android:pathData="M18.164,5.651 a1.561,1.561 0 1 0 3.122,0 a1.561,1.561 0 1 0 -3.122,0 Z"/>
-    <path android:fillColor="8CF5F5F5" android:pathData="M18.164,10.333 a1.561,1.561 0 1 0 3.122,0 a1.561,1.561 0 1 0 -3.122,0 Z"/>
-    <path android:fillColor="8CF5F5F5" android:pathData="M18.164,15.016 a1.561,1.561 0 1 0 3.122,0 a1.561,1.561 0 1 0 -3.122,0 Z"/>
+    <path android:fillColor="#8CF5F5F5" android:pathData="M18.164,5.651 a1.561,1.561 0 1 0 3.122,0 a1.561,1.561 0 1 0 -3.122,0 Z"/>
+    <path android:fillColor="#8CF5F5F5" android:pathData="M18.164,10.333 a1.561,1.561 0 1 0 3.122,0 a1.561,1.561 0 1 0 -3.122,0 Z"/>
+    <path android:fillColor="#8CF5F5F5" android:pathData="M18.164,15.016 a1.561,1.561 0 1 0 3.122,0 a1.561,1.561 0 1 0 -3.122,0 Z"/>
     <path android:fillColor="#F5F5F5" android:pathData="M3.111,18.825 h17.778 a1.111,1.111 0 0 1 1.111,1.111 v0.000 a1.111,1.111 0 0 1 -1.111,1.111 h-17.778 a1.111,1.111 0 0 1 -1.111,1.111 v-0.000 a1.111,1.111 0 0 1 -1.111,-1.111 Z"/>
 </vector>

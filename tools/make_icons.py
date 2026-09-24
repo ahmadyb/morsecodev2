@@ -408,7 +408,10 @@ def mark_paths(shapes, ink_hex, size, cx=None, cy=None, width=None):
     out = []
     for s in shapes:
         a = int(round(s.alpha * 255))
-        color = "%02X%s" % (a, ink_hex[1:]) if a < 255 else ink_hex
+        # #AARRGGBB: the faded dot column is the same ink, drawn at partial alpha. The ink may be
+        # given as #RRGGBB or as a full #AARRGGBB, so keep only the colour bits.
+        rgb = ink_hex.lstrip("#")[-6:]
+        color = "#%02X%s" % (a, rgb) if a < 255 else "#" + rgb
         x, y, sw, sh = ox + s.x * f, oy + s.y * f, s.w * f, s.h * f
         path = circle(x + sw / 2.0, y + sh / 2.0, min(sw, sh) / 2.0) if s.kind == "dot" \
             else rr(x, y, sw, sh, s.r * f)
