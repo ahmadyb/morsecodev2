@@ -35,6 +35,17 @@ inline fun View.onClick(crossinline body: () -> Unit) {
     })
 }
 
+/**
+ * Android gives every view exactly one parent. Screens in this app are rebuilt by re-adding the
+ * same long-lived child (the radar, the action bar) to a freshly built container, so the child has
+ * to let go of its old parent first - otherwise `addView` throws
+ * "IllegalStateException: The specified child already has a parent" and the screen dies.
+ */
+fun View.detach(): View {
+    (parent as? ViewGroup)?.removeView(this)
+    return this
+}
+
 inline fun View.onLongClick(crossinline body: () -> Boolean) {
     setOnLongClickListener(object : View.OnLongClickListener {
         override fun onLongClick(v: View?): Boolean = body()

@@ -27,6 +27,8 @@ class LogStore(private val ctx: Context) {
     private val prefs get() = Di.prefs(ctx)
 
     companion object {
+        /** logcat tag: `adb logcat -s MorseCode` */
+        const val TAG = "MorseCode"
         private const val VERSION_LINE = "MorseCode"
         private val TIME = SimpleDateFormat("HH:mm:ss", Locale.US)
 
@@ -43,6 +45,14 @@ class LogStore(private val ctx: Context) {
     fun error(message: String) = append(Level.ERROR, message)
 
     private fun append(level: Level, message: String) {
+        // Mirror to logcat so `adb logcat -s MorseCode` shows the same trail the Log viewer does.
+        // This is what makes "did the app actually open and which screen did it reach" answerable
+        // from a bug report or from a CI emulator run.
+        when (level) {
+            Level.INFO -> android.util.Log.i(TAG, message)
+            Level.WARN -> android.util.Log.w(TAG, message)
+            Level.ERROR -> android.util.Log.e(TAG, message)
+        }
         if (!prefs.logEnabled && level != Level.ERROR) return
         synchronized(ring) {
             ring.addLast(Line(System.currentTimeMillis(), level, message))

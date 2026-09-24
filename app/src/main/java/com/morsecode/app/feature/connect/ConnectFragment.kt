@@ -16,6 +16,7 @@ import com.morsecode.app.core.transfer.SessionPhase
 import com.morsecode.app.core.transfer.TransferEngine
 import com.morsecode.app.core.ui.RadarView
 import com.morsecode.app.core.ui.Screen
+import com.morsecode.app.core.ui.detach
 import com.morsecode.app.core.ui.Ui
 import com.morsecode.app.core.ui.W
 import com.morsecode.app.core.ui.onClick
@@ -115,7 +116,7 @@ class ConnectFragment(
         radar.setMode(RadarView.Mode.DISCOVERY)
         radar.setPeers(engine.peers.value)
         val col = W.column(ctx)
-        col.addView(radar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, D.dp(ctx, 190f)))
+        col.addView(radar.detach(), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, D.dp(ctx, 190f)))
         val count = engine.peers.value.size
         val caption = when {
             count == 0 -> ctx.getString(R.string.scanning_local_network)

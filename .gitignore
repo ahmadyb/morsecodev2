@@ -3,6 +3,10 @@ build/
 .gradle/
 app/build/
 
+# locally built artifacts - the released APKs/AAB come from CI (see README)
+dist/
+screenshots/
+
 # ide / os
 .idea/
 *.iml

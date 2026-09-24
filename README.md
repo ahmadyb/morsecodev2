@@ -22,7 +22,9 @@ no account, no cloud, no analytics, no ads.
 
 ## Build
 
-Three ways, all producing the same signed artifacts in `dist/`.
+CI builds and validates every commit; `tools/offline_build.py` reproduces the same bytes locally
+without Gradle or Maven, and Gradle is the third path. The published artifacts are the ones on the
+releases page — `dist/` is only ever a local scratch directory.
 
 ### 1. Offline script (no network, no Gradle, no Android Studio required)
 
@@ -51,13 +53,19 @@ you want a wrapper in your fork. The Gradle debug build carries the `.debug` app
 
 ### Download instead of building
 
-Every push is built on GitHub Actions and published as a release, so you can install straight from
-[the releases page](https://github.com/ahmadyb/morsecodev2/releases/latest):
+Every push is built on GitHub Actions, opened on an emulator and then published, so you can install
+straight from [the releases page](https://github.com/ahmadyb/morsecodev2/releases/latest):
 
 ```bash
-adb install -r MorseCode-1.0.0-release.apk         # phones
-# MorseCode-1.0.0.aab -> Play Console -> Internal testing -> upload
+adb install -r MorseCode-1.0.1-release.apk         # phones
+# MorseCode-1.0.1.aab -> Play Console -> Internal testing -> upload
 ```
+
+> **v1.0.0 could not open.** The first release compiled but died on the first frame
+> (`IllegalStateException: The specified child already has a parent` — the radar was re-added to a
+> freshly built container on every refresh, and the Connect screen refreshes as soon as discovery
+> starts). v1.0.1 fixes it and, more importantly, adds the emulator gate below so this class of bug
+> cannot ship again.
 
 ### 3. CI — builds and publishes the release
 
@@ -94,7 +102,9 @@ Private keys are never committed by the CI, and `keystore/keystore.properties` i
 ## Install
 
 ```bash
-adb install -r dist/MorseCode-1.0.0-release.apk
+adb install -r MorseCode-1.0.1-release.apk      # from the releases page
+# or, after a local build:
+adb install -r dist/MorseCode-1.0.1-release.apk
 ```
 
 Both phones should be on the same Wi-Fi for full speed. First launch walks through the four

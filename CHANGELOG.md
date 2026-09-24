@@ -4,6 +4,30 @@ All notable changes to MorseCode. Releases are built and published by GitHub Act
 `v1.2.3` becomes `versionName 1.2.3`, `versionCode 10203`, and the tag is created on the commit
 the artifacts were built from.
 
+## 1.0.1 — the app actually opens
+
+### Fixed
+- **Launch crash.** `ConnectFragment` (and the Broadcast view in `TransferFragment`) added the
+  long-lived `RadarView` to a freshly built container on every refresh. Android gives a view one
+  parent, so the first refresh after discovery started threw
+  `IllegalStateException: The specified child already has a parent` and the app died on its first
+  frame. Re-hosted views now go through `View.detach()` (`core/ui/UiExt.kt`); the rule is written
+  down in `docs/ARCHITECTURE.md`.
+- **Screenshots/launch evidence.** `LogStore` now mirrors its lines to logcat under the
+  `MorseCode` tag, so `adb logcat -s MorseCode` shows the same trail as the in-app Log viewer and a
+  bug report can say which screen was reached before a crash.
+
+### Added
+- **Emulator gate.** `tools/emulator_smoke.sh` installs the release APK on an API 34 emulator,
+  opens it, walks all four tabs and fails on a crash, an ANR or a dead process. The `release.yml`
+  workflow runs it between building and publishing, so nothing is released that has not been
+  opened on a real Android runtime. Screenshots land in `docs/screenshots/`.
+- **Icons traced from the brand artwork.** `tools/make_icons.py` now measures `morseliink/logo.PNG`
+  (tile bounds, gradient, corner radius, the mark's bars, its 2x3 dot grid with the faded right
+  column and the transmit bar), generates every launcher/adaptive/in-app/notification asset from
+  that trace, and verifies the trace against the artwork (worst element edge deviation < 1.6 px,
+  boundary-tolerant IoU > 0.97) before writing anything.
+
 ## 1.0.0 — first release
 
 ### Four surfaces

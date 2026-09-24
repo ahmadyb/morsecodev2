@@ -1,40 +1,42 @@
 name: Build & Release
 
-# Builds the debug APK, the signed release APK and the AAB on GitHub, verifies them, uploads
-# them as workflow artifacts and publishes them on a GitHub release.
-#
-#   push v1.2.3        -> built as 1.2.3, released under the tag v1.2.3
-#   push main/arena/** -> built as the default version, released under v<default>
-#   manual run         -> choose the tag/version yourself
+# Builds the debug APK, the signed release APK and the AAB, installs the release on a real
+# Android emulator and drives it through all four tabs, and only then publishes a release.
+# A build that cannot open is never published.
+
 on:
   push:
-    branches: ["main", "arena/**"]
+    branches: [main, "arena/**"]
     tags: ["v*"]
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag (and version) to build and publish, e.g. v1.1.0"
-        default: "v1.0.0"
-        type: string
+        description: "Release tag (e.g. v1.0.0). Defaults to v<version>."
+        required: false
       publish:
         description: "Publish a GitHub release"
-        default: true
         type: boolean
+        default: true
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: write
 
-concurrency:
-  group: morse-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
-
 env:
-  DEFAULT_VERSION: "1.0.0"
+  DEFAULT_VERSION: "1.0.1"
+  ANDROID_BUILD_TOOLS: "34.0.0"
 
 jobs:
   build:
     name: Build artifacts
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.name }}
+      code: ${{ steps.ver.outputs.code }}
+      tag: ${{ steps.meta.outputs.tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -45,123 +47,80 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      # Plain shell instead of a marketplace action: the runner image already ships the SDK,
-      # and this only has to fill in the two platforms and one build-tools version we pin.
       - name: Set up Android SDK
         run: |
           set -euo pipefail
-          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDK="$RUNNER_TEMP/android-sdk"
+          mkdir -p "$SDK/cmdline-tools"
+          if [ ! -d "$RUNNER_TEMP/cmdline-tools/latest" ]; then
+            curl -fsSL -o "$RUNNER_TEMP/cmdline-tools.zip" \
+              https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+            unzip -q "$RUNNER_TEMP/cmdline-tools.zip" -d "$RUNNER_TEMP/cmdline-tools"
+          fi
+          mv "$RUNNER_TEMP/cmdline-tools/cmdline-tools" "$SDK/cmdline-tools/latest" 2>/dev/null || true
+          export PATH="$SDK/cmdline-tools/latest/bin:$PATH"
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager --install "platform-tools" "platforms;android-23" "platforms;android-34" \
+            "build-tools;$ANDROID_BUILD_TOOLS" >/dev/null
           echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
-
-          SDKMGR="$(command -v sdkmanager || true)"
-          if [ -z "$SDKMGR" ]; then
-            for candidate in "$SDK"/cmdline-tools/latest/bin/sdkmanager "$SDK"/cmdline-tools/*/bin/sdkmanager; do
-              [ -x "$candidate" ] && SDKMGR="$candidate" && break
-            done
-          fi
-          if [ -z "$SDKMGR" ]; then
-            echo "sdkmanager missing - fetching the command line tools"
-            mkdir -p /tmp/cmdline && cd /tmp/cmdline
-            curl -fsSL -o tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
-            unzip -q tools.zip
-            mkdir -p "$SDK/cmdline-tools"
-            mv cmdline-tools "$SDK/cmdline-tools/latest"
-            SDKMGR="$SDK/cmdline-tools/latest/bin/sdkmanager"
-          fi
-          echo "using $SDKMGR"
-
-          yes | "$SDKMGR" --sdk_root="$SDK" --licenses > /dev/null 2>&1 || true
-          # android-23 is what the app sources compile against so an old device can never hit a
-          # missing symbol, and the offline fallback builder needs that jar for its second pass.
-          "$SDKMGR" --sdk_root="$SDK" --install "platforms;android-34" "platforms;android-23" "build-tools;34.0.0"
           echo "$SDK/platform-tools" >> "$GITHUB_PATH"
-          echo "$SDK/build-tools/34.0.0" >> "$GITHUB_PATH"
-          ls "$SDK/platforms"
-          ls "$SDK/build-tools"
+          echo "$SDK/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
 
       - name: Resolve version
         id: ver
         run: |
           set -euo pipefail
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
-            V="${GITHUB_REF#refs/tags/v}"
-          elif [ -n "${{ inputs.tag }}" ]; then
-            V="${{ inputs.tag }}"
-            V="${V#v}"
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            VER="${GITHUB_REF#refs/tags/}"
+            VER="${VER#v}"
           else
-            V="${DEFAULT_VERSION}"
+            VER="$DEFAULT_VERSION"
           fi
-          # 1.2.3 -> 10203: the Play upload counter, derived from the tag so it never repeats.
-          CODE=$(python3 -c "
-          import sys
-          parts = (sys.argv[1].split('.') + ['0', '0'])[:3]
-          nums = []
-          for p in parts:
-              digits = ''.join(c for c in p if c.isdigit())
-              nums.append(int(digits) if digits else 0)
-          print(nums[0] * 10000 + nums[1] * 100 + nums[2])
-          " "$V")
-          echo "name=$V" >> "$GITHUB_OUTPUT"
+          if ! [[ "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::cannot derive a version from '$VER'"
+            exit 1
+          fi
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VER"
+          CODE=$(( MAJOR * 10000 + MINOR * 100 + PATCH ))
+          echo "name=$VER" >> "$GITHUB_OUTPUT"
           echo "code=$CODE" >> "$GITHUB_OUTPUT"
-          echo "MC_VERSION_NAME=$V" >> "$GITHUB_ENV"
+          echo "MC_VERSION_NAME=$VER" >> "$GITHUB_ENV"
           echo "MC_VERSION_CODE=$CODE" >> "$GITHUB_ENV"
-          echo "building version $V ($CODE)"
+          echo "versionName=$VER versionCode=$CODE"
 
       - name: Set up Gradle 8.7
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: "8.7"
 
-      # ---------------------------------------------------------------- primary build
       - name: Build with Gradle (debug APK, release APK, AAB)
         id: gradle
         run: |
-          # Failures are surfaced as annotations (readable through the API) and handed to the
-          # fallback build instead of ending the job here.
-          annotate() {
-            grep -aE "^e: |error:|Unresolved|FAILURE:|What went wrong|Execution failed|Could not (resolve|find|download)|> Task .*FAILED|Caused by" "$1" \
-              | sort -u | head -60 | while IFS= read -r line; do
-                  line="${line//$'\r'/}"
-                  echo "::error title=gradle::${line:0:800}"
-                done
-          }
           set +e
-          gradle --no-daemon --stacktrace \
-            :app:assembleDebug :app:assembleRelease :app:bundleRelease 2>&1 | tee /tmp/gradle.log
-          status=${PIPESTATUS[0]}
-          echo "---- last 25 lines ----"
-          tail -25 /tmp/gradle.log
-          if [ "$status" -ne 0 ]; then
-            annotate /tmp/gradle.log
+          gradle --no-daemon assembleDebug assembleRelease bundleRelease 2>&1 | tee /tmp/gradle.log
+          STATUS=${PIPESTATUS[0]}
+          if [ "$STATUS" -ne 0 ]; then
+            grep -E "^(e: |.*error: |FAILURE|Execution failed|Caused by)" /tmp/gradle.log | sort -u | head -60 | while IFS= read -r line; do
+              echo "::error title=gradle::${line:0:800}"
+            done
             echo "gradle_failed=true" >> "$GITHUB_OUTPUT"
           else
             echo "gradle_failed=false" >> "$GITHUB_OUTPUT"
           fi
           exit 0
 
-      # ---------------------------------------------------------------- fallback build
-      # The Gradle path needs the Android Gradle Plugin from Google Maven. If that is
-      # unreachable, the repository's own Gradle-free toolchain builds the same three files.
       - name: Build with the offline toolchain (fallback)
         if: steps.gradle.outputs.gradle_failed == 'true'
         run: |
           set -euo pipefail
-          # kotlinc's launcher script passes JAVA_OPTS to its JVM: the defaults OOM on this app.
-          export JAVA_OPTS="-Xmx3g -XX:MaxMetaspaceSize=768m"
-          curl -fsSL --retry 3 -o /tmp/kotlin.zip \
+          echo "::warning title=fallback::Gradle failed - building with the offline toolchain"
+          curl -fsSL -o /tmp/kotlin.zip \
             https://github.com/JetBrains/kotlin/releases/download/v1.9.24/kotlin-compiler-1.9.24.zip
-          unzip -q /tmp/kotlin.zip -d /tmp/kotlin
-          chmod +x /tmp/kotlin/kotlinc/bin/*
-          set +e
-          python3 tools/offline_build.py \
-            --jdk "$JAVA_HOME" \
-            --kotlinc /tmp/kotlin/kotlinc/bin/kotlinc \
-            --build-tools "$ANDROID_HOME/build-tools/34.0.0" \
-            --aapt2 "$ANDROID_HOME/build-tools/34.0.0/aapt2" \
-            --platforms "$ANDROID_HOME/platforms" 2>&1 | tee /tmp/offline.log
-          status=${PIPESTATUS[0]}
-          if [ "$status" -ne 0 ]; then
+          unzip -q /tmp/kotlin.zip -d /tmp
+          export KOTLINC_PATH=/tmp/kotlinc/bin/kotlinc
+          export JAVA_OPTS="-Xmx3g -XX:MaxMetaspaceSize=768m"
+          if ! python3 tools/offline_build.py > /tmp/offline.log 2>&1; then
             tail -40 /tmp/offline.log | while IFS= read -r line; do
               line="${line//$'\r'/}"
               echo "::error title=offline-build::${line:0:800}"
@@ -203,9 +162,9 @@ jobs:
           set -euo pipefail
           V="${{ steps.ver.outputs.name }}"
           APK="out/MorseCode-${V}-release.apk"
-          SIGNER="$ANDROID_HOME/build-tools/34.0.0/lib/apksigner.jar"
+          SIGNER="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS/lib/apksigner.jar"
           java -jar "$SIGNER" verify --print-certs "$APK"
-          "$ANDROID_HOME/build-tools/34.0.0/aapt2" dump badging "$APK" | head -3
+          "$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS/aapt2" dump badging "$APK" | head -3
           CERT=$(java -jar "$SIGNER" verify --print-certs "$APK" | grep "Signer #1 certificate DN" | cut -d: -f2- | xargs)
           SCHEMES=$(java -jar "$SIGNER" verify -v "$APK" | grep -E "Verified using v[0-9] scheme" | xargs | tr '\n' ' ')
           SIZE=$(stat -c%s "$APK")
@@ -215,33 +174,6 @@ jobs:
         run: |
           cd out && sha256sum *.apk *.aab > SHA256SUMS.txt && cat SHA256SUMS.txt
 
-      - name: Resolve release tag
-        id: meta
-        run: |
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            TAG="${GITHUB_REF#refs/tags/}"
-          elif [ -n "${{ inputs.tag }}" ]; then
-            TAG="${{ inputs.tag }}"
-          else
-            TAG="v${{ steps.ver.outputs.name }}"
-          fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-
-      # Keeping the invariant "the tag points at the commit the artifacts came from" also on re-runs
-      # that overwrite an existing release, so a download can always be matched to a source tree.
-      - name: Point the tag at this commit
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/arena/')
-        run: |
-          set -euo pipefail
-          V="${{ steps.ver.outputs.name }}"
-          TAG="${{ steps.meta.outputs.tag }}"
-          test -f "out/MorseCode-${V}-release.apk" || { echo "::error::nothing to publish"; exit 1; }
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git config user.name "github-actions[bot]"
-          git tag -f "$TAG" "$GITHUB_SHA"
-          git push -f origin "refs/tags/$TAG"
-          echo "::notice::${TAG} points at $GITHUB_SHA"
-
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -249,31 +181,126 @@ jobs:
           path: out/*
           if-no-files-found: error
 
-      - name: Publish GitHub release
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/arena/')
+  smoke:
+    name: Install and drive the app on an emulator
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Download the built artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: MorseCode-${{ needs.build.outputs.version }}
+          path: out
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      # The release APK is the artifact users install, so the test installs and drives exactly
+      # that file. A crash on launch fails the job and blocks the release.
+      - name: Install and drive the app
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: bash tools/emulator_smoke.sh "${{ needs.build.outputs.version }}"
+
+      - name: Upload emulator screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: MorseCode-screenshots
+          path: screenshots/**
+          if-no-files-found: warn
+
+      # The screenshots are the evidence that the published APK opens and that the UI matches
+      # the approved designs, so they belong next to the source rather than in a job artifact
+      # that expires. `[skip ci]` keeps this from starting another run.
+      - name: Commit the screenshots
+        if: always() && github.ref_type == 'branch' && hashFiles('screenshots/*.png') != ''
+        run: |
+          set -euo pipefail
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          mkdir -p docs/screenshots
+          cp screenshots/*.png docs/screenshots/
+          git add docs/screenshots
+          if git diff --cached --quiet; then
+            echo "screenshots unchanged"
+          else
+            git commit -m "ci: emulator screenshots from run ${GITHUB_RUN_ID} [skip ci]"
+            git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}"
+          fi
+
+  release:
+    name: Publish GitHub release
+    needs: [build, smoke]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/arena/') || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download the verified artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: MorseCode-${{ needs.build.outputs.version }}
+          path: out
+
+      - name: Point the tag at this commit
+        run: |
+          set -euo pipefail
+          TAG="${{ needs.build.outputs.tag }}"
+          test -f "out/MorseCode-${{ needs.build.outputs.version }}-release.apk" \
+            || { echo "::error::nothing to publish"; exit 1; }
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git tag -f "$TAG" "$GITHUB_SHA"
+          git push -f origin "refs/tags/$TAG"
+          echo "::notice::${TAG} points at $GITHUB_SHA"
+
+      - name: Publish
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.meta.outputs.tag }}
-          # The tag must point at the commit the artifacts were built from, not at main.
+          tag_name: ${{ needs.build.outputs.tag }}
           target_commitish: ${{ github.sha }}
-          name: MorseCode ${{ steps.meta.outputs.tag }}
+          name: MorseCode ${{ needs.build.outputs.version }}
+          make_latest: true
+          fail_on_unmatched_files: true
+          files: out/*
           body: |
-            ### MorseCode ${{ steps.ver.outputs.name }}
+            ### MorseCode ${{ needs.build.outputs.version }}
 
             Offline, peer-to-peer file transfer for Android — LAN, Nearby, Broadcast and WebShare.
 
             | File | What it is |
             |------|------------|
-            | `MorseCode-${{ steps.ver.outputs.name }}-release.apk` | signed release build (v1 + v2 signatures) |
-            | `MorseCode-${{ steps.ver.outputs.name }}-debug.apk` | debug build for testing |
-            | `MorseCode-${{ steps.ver.outputs.name }}.aab` | Android App Bundle for Play |
+            | `MorseCode-${{ needs.build.outputs.version }}-release.apk` | signed release build (v1 + v2 signatures) |
+            | `MorseCode-${{ needs.build.outputs.version }}-debug.apk` | debug build for testing |
+            | `MorseCode-${{ needs.build.outputs.version }}.aab` | Android App Bundle for Play |
             | `SHA256SUMS.txt` | checksums |
 
-            **Install:** `adb install -r MorseCode-${{ steps.ver.outputs.name }}-release.apk`
+            **Install:** `adb install -r MorseCode-${{ needs.build.outputs.version }}-release.apk`
 
-            Built from `${{ github.sha }}` · versionCode `${{ steps.ver.outputs.code }}` ·
+            This build was installed and driven through all four tabs on an Android 14 (API 34)
+            emulator before publishing — the screenshots are the `MorseCode-screenshots` workflow
+            artifact.
+
+            Built from `${{ github.sha }}` · versionCode `${{ needs.build.outputs.code }}` ·
             minSdk 21 · targetSdk 34 · applicationId `com.morsecode.app`
-          files: out/*
-          draft: false
-          make_latest: true
-          fail_on_unmatched_files: true

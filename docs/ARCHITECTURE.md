@@ -101,6 +101,30 @@ and is responsive from 360 dp to desktop (INV-8). The server never shuts down on
 * Dark mode is the product default and matches the **a-series** mocks; light matches the
   **b-series** mocks. Icons are 24 dp vectors tinted at runtime.
 
+## UI construction rules
+
+The UI is built in Kotlin, not XML: the whole resource tree is 90 files of colours, strings and
+vector drawables, and `main/res/layout/` does not exist. That is deliberate —
+
+* **No AndroidX, no Material, no Compose.** The APK carries exactly one dex with the app's own 442
+  classes next to the platform APIs it uses, which is why a complete app is ~450 KB instead of the
+  ~4 MB an AndroidX + Material build weighs. Nothing here is throwaway: every screen, sheet, radar
+  and browser SPA is hand-built against the platform.
+* **One Activity** (`MainActivity`) hosts the four tabs; `TransferFragment` is pushed over a tab so
+  a session survives minimising back to the nav bar.
+
+Two rules keep that model safe, and both exist because they broke in v1.0.0:
+
+1. **A view has exactly one parent.** Screens rebuild by clearing a container and re-adding their
+   long-lived children (the radar, the action bar). Any view stored in a field must be passed
+   through `View.detach()` before it is re-added, or `addView` throws
+   `IllegalStateException: The specified child already has a parent`.
+2. **Every screen has a terminal state.** A rebuild that cannot render shows an empty state; it
+   never leaves the previous frame on screen with no way forward (INV-1).
+
+The emulator smoke test (`tools/emulator_smoke.sh`, run by CI before any release) is what enforces
+this in practice: it opens the release APK and walks all four tabs.
+
 ## Threading
 
 * UI: main looper only. `State`/`Event` marshal worker updates onto the main thread and coalesce

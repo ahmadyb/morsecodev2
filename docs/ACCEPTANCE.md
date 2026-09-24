@@ -6,7 +6,7 @@ physical phones without a debugger. Ports used: **UDP 33457** (discovery), **TCP
 
 | # | Test | Steps | Expected |
 |---|------|-------|----------|
-| 1 | Cold start | Install, launch with no permissions granted | Connect tab renders: avatar, radar sweeping, Send / Receive, WebShare card, "No phones discovered yet". No crash, no ANR. |
+| 1 | Cold start | Install, launch with no permissions granted | Connect tab renders: avatar, radar sweeping, Send / Receive, WebShare card, "No phones discovered yet". No crash, no ANR. **Automated:** `tools/emulator_smoke.sh` runs this on an API 34 emulator for every build and blocks the release if the process dies. |
 | 2 | Onboarding | First launch only | 4 slides: offline transfer, permissions, WebShare, all set. Swipe or Continue; Skip jumps straight in; "Replay onboarding" in Settings brings it back. |
 | 3 | Discovery | Two phones on the same Wi-Fi, both on Connect | Each phone shows the other within ~2 s; the radar draws a dot per peer; "N devices nearby" matches the list. |
 | 4 | Connection request | Phone A taps Connect on phone B | B shows the modal **"Connection request"** — "Ravi's Redmi wants to send you files." with Accept / Reject and a Phone · Wi-Fi LAN · IP subtitle. |
@@ -28,16 +28,29 @@ physical phones without a debugger. Ports used: **UDP 33457** (discovery), **TCP
 | 20 | No idle teardown (INV-4) | Start WebShare, leave it 30 minutes with no requests | Still running, still reachable. Nothing stops it except the user toggling it off. |
 | 21 | Media paging (INV-10, INV-9) | Open Files with > 2 000 photos | Grid pages in without a `LIMIT/OFFSET` in the sort string; newest day first, day groups correct, no frozen scroll. |
 | 22 | Theme + accents | Settings → pick each of the 5 accents, toggle dark/light, apply a theme overlay | Every surface recolours immediately; dark = a-series mocks, light = b-series mocks; no clipped or invisible text. |
-| 23 | Diagnostics + release hygiene | Settings → Connection Doctor / Log viewer; then check the shipped artifacts | Doctor lists Wi-Fi / peers / multicast / Bluetooth / permissions / battery with colour lights; the log tails live, exports to .txt and filters errors. `dist/` contains a **signed** debug APK, release APK and `.aab`, all `minSdk 21`, `targetSdk 34`, `applicationId com.morsecode.app`. |
+| 23 | Diagnostics + release hygiene | Settings → Connection Doctor / Log viewer; then check the shipped artifacts | Doctor lists Wi-Fi / peers / multicast / Bluetooth / permissions / battery with colour lights; the log tails live, exports to .txt and filters errors. The release page carries a **signed** debug APK, release APK and `.aab`, all `minSdk 21`, `targetSdk 34`, `applicationId com.morsecode.app`. |
+| 24 | Launch gate (automated) | Any push or tag | `Build & Release` builds, installs the release APK on an Android 14 emulator, opens it, walks all four tabs and fails the run on a crash, an ANR or a dead process. The screenshots are committed to `docs/screenshots/`. A red gate means no release is published. |
 
 ## How to verify the artifacts
 
+The artifacts are built by GitHub Actions and published on
+[the releases page](https://github.com/ahmadyb/morsecodev2/releases/latest) - the four jobs that
+decide a release are `Build artifacts` → `Install and drive the app on an emulator` →
+`Publish GitHub release`.
+
 ```bash
+# local build (needs the toolchain on PATH; see README)
 python3 tools/offline_build.py               # produces dist/*.apk and dist/*.aab
+
+# the same launch check the release gate runs, against an already-running emulator
+tools/emulator_smoke.sh 1.0.1
+
+# icon assets are generated from morseliink/logo.PNG and verified against it
+python3 tools/make_icons.py --check
 
 # signature + manifest checks (build-tools 26+)
 java -cp $ANDROID_HOME/build-tools/33.0.0/lib/apksigner.jar com.android.apksigner.ApkSignerTool \
-     verify --print-certs dist/MorseCode-1.0.0-release.apk
+     verify --print-certs dist/MorseCode-1.0.1-release.apk
 aapt dump badging dist/MorseCode-1.0.0-release.apk | head -3   # sdkVersion 21, targetSdkVersion 34
 ```
 

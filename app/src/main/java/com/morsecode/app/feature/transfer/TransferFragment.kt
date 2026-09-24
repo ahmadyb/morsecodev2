@@ -25,6 +25,7 @@ import com.morsecode.app.core.transfer.TransferEngine
 import com.morsecode.app.core.ui.ProgressView
 import com.morsecode.app.core.ui.RadarView
 import com.morsecode.app.core.ui.Screen
+import com.morsecode.app.core.ui.detach
 import com.morsecode.app.core.ui.Ui
 import com.morsecode.app.core.ui.W
 import com.morsecode.app.core.ui.onClick
@@ -251,7 +252,7 @@ class TransferFragment(
         radar.setMode(RadarView.Mode.DISCOVERY)
         radar.setPeers(engine.peers.value)
         radar.visibility = View.VISIBLE
-        col.addView(radar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, D.dp(ctx, 190f)))
+        col.addView(radar.detach(), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, D.dp(ctx, 190f)))
 
         val head = W.column(ctx)
         head.setGravity(Gravity.CENTER)
@@ -621,7 +622,7 @@ class TransferFragment(
             col.addView(toggle)
             radar.setMode(RadarView.Mode.TOPOLOGY)
             radar.setBroadcast(peers, perPeerProgress(groupItems))
-            col.addView(radar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, D.dp(ctx, 168f)))
+            col.addView(radar.detach(), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, D.dp(ctx, 168f)))
             col.addView(W.gap(ctx, 10))
         }
 
