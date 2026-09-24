@@ -3,9 +3,11 @@ build/
 .gradle/
 app/build/
 
-# locally built artifacts - the released APKs/AAB come from CI (see README)
+# locally built artifacts - the released APKs/AAB come from CI (see README).
+# Note the leading slash: the emulator gate's scratch directory is ignored, while the
+# screenshots it commits live in docs/screenshots/ and must stay tracked.
 dist/
-screenshots/
+/screenshots/
 
 # ide / os
 .idea/
