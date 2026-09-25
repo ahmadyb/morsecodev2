@@ -425,9 +425,13 @@ jobs:
           [ "$COUNT" -gt 0 ] || exit 0
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
+          # Replace, do not merge: the script names its shots after their position in the walk,
+          # so an older run's numbering lingers as a file that no longer corresponds to anything
+          # - and the docs then show two different "Files tab" screenshots from two builds.
+          rm -f docs/screenshots/*.png
           mkdir -p docs/screenshots
           cp screenshots/*.png docs/screenshots/
-          git add docs/screenshots
+          git add -A docs/screenshots
           if git diff --cached --quiet; then
             echo "::notice title=screenshots::no change from the previous run"
             exit 0
