@@ -21,6 +21,7 @@ import com.morsecode.app.core.ui.ResultAware
 import com.morsecode.app.core.ui.Screen
 import com.morsecode.app.core.ui.Ui
 import com.morsecode.app.core.ui.W
+import com.morsecode.app.core.ui.onClick
 import com.morsecode.app.core.util.Compat
 import com.morsecode.app.core.util.D
 import com.morsecode.app.core.util.Permissions

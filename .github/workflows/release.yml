@@ -105,6 +105,9 @@ jobs:
 
       # aapt2-only, so a broken drawable/colour/string fails in seconds instead of after the
       # full Gradle build (which is exactly how `#8C2A1701` reached a runner once).
+      - name: Check the compat pass stays dependency-free
+        run: python3 tools/check_compat.py
+
       - name: Validate resources
         run: python3 tools/check_resources.py
 
