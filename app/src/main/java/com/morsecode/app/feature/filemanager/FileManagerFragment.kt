@@ -9,7 +9,6 @@ import android.os.Looper
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.widget.CheckBox
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.ImageView
@@ -89,7 +88,7 @@ class FileManagerFragment(private val activity: Activity) : Screen {
     private lateinit var body: LinearLayout
     private var barHost: FrameLayout? = null
     private var bar: View? = null
-    private val checks = HashMap<String, CheckBox>()
+    private val checks = HashMap<String, Mark>()
     private val rings = HashMap<String, View>()
     private var loading: View? = null
     private val ui = Handler(Looper.getMainLooper())
@@ -622,10 +621,8 @@ class FileManagerFragment(private val activity: Activity) : Screen {
         }
         col.addView(W.label(ctx, meta, 11.5f, ThemeColors.text2(ctx), mono = true))
         row.addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        val check = CheckBox(ctx)
-        markCheck(check, selected.containsKey(uri))
-        check.isClickable = false
-        check.isFocusable = false
+        val check = Mark(ctx)
+        check.on = selected.containsKey(uri)
         checks[uri] = check
         row.addView(check)
         if (isDir) {
@@ -821,10 +818,8 @@ class FileManagerFragment(private val activity: Activity) : Screen {
         ring.visibility = if (selected.containsKey(item.uri)) View.VISIBLE else View.GONE
         frame.addView(ring, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         rings[item.uri] = ring
-        val check = CheckBox(ctx)
-        markCheck(check, selected.containsKey(item.uri))
-        check.isClickable = false
-        check.isFocusable = false
+        val check = Mark(ctx)
+        check.on = selected.containsKey(item.uri)
         val clp = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         clp.gravity = Gravity.TOP or Gravity.END
         clp.setMargins(0, D.dp(ctx, 2f), D.dp(ctx, 6f), 0)
@@ -883,10 +878,8 @@ class FileManagerFragment(private val activity: Activity) : Screen {
         col.addView(W.label(ctx, "${Fmt.size(item.size)} \u00b7 ${Fmt.timeAgo(item.dateMs)}",
             11.5f, ThemeColors.text2(ctx), mono = true))
         row.addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        val check = CheckBox(ctx)
-        markCheck(check, selected.containsKey(item.uri))
-        check.isClickable = false
-        check.isFocusable = false
+        val check = Mark(ctx)
+        check.on = selected.containsKey(item.uri)
         checks[item.uri] = check
         row.addView(check)
         val picked = mediaPicked(item)
@@ -1044,18 +1037,57 @@ class FileManagerFragment(private val activity: Activity) : Screen {
         refreshBar()
     }
 
-    /** Set a check box and settle its animation immediately, attached or not. */
-    private fun markCheck(check: CheckBox, on: Boolean) {
-        check.isChecked = on
-        try {
-            check.jumpDrawablesToCurrentState()
-        } catch (t: Throwable) {
+    /**
+     * The selection mark: a rounded square with a tick on it.
+     *
+     * Drawn rather than borrowed from the platform's CheckBox. That widget's button drawable is an
+     * animated state list, and setting three of them to checked in one pass left the first tile
+     * painting an empty box with a dash: state true, pixels wrong. A screenshot of the grid showed
+     * two ticks for "3 selected" and the check the gate was making could not tell.
+     *
+     * The state is in the content description too, which is what a screen reader announces and
+     * what the emulator gate counts.
+     */
+    private inner class Mark(ctx: Context) : FrameLayout(ctx) {
+        private val glyph = W.icon(ctx, R.drawable.ic_check, 13, ThemeColors.accentInk(ctx))
+
+        var on: Boolean = false
+            set(value) {
+                field = value
+                render()
+            }
+
+        init {
+            val size = D.dp(ctx, 21f)
+            minimumWidth = size
+            minimumHeight = size
+            val inner = D.dp(ctx, 13f)
+            addView(glyph, LayoutParams(inner, inner, Gravity.CENTER))
+            render()
+        }
+
+        private fun render() {
+            val d = GradientDrawable()
+            d.setShape(GradientDrawable.RECTANGLE)
+            d.setCornerRadius(D.dp(context, 6f).toFloat())
+            if (on) {
+                d.setColor(ThemeColors.accentStart(context))
+            } else {
+                // A dark well with a light edge: readable on a bright photo and on a card.
+                d.setColor(0x66000000)
+                d.setStroke(D.dp(context, 1.5f), 0xCCFFFFFF.toInt())
+            }
+            background = d
+            glyph.visibility = if (on) View.VISIBLE else View.GONE
+            contentDescription = context.getString(
+                if (on) R.string.selected_state else R.string.not_selected_state
+            )
         }
     }
 
     private fun refreshIndicators() {
         for ((uri, check) in checks) {
-            markCheck(check, selected.containsKey(uri))
+            check.on = selected.containsKey(uri)
         }
         for ((uri, ring) in rings) {
             ring.visibility = if (selected.containsKey(uri)) View.VISIBLE else View.GONE

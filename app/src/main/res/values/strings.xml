@@ -158,6 +158,8 @@
     <string name="yesterday_n_items">Yesterday %1$d items</string>
     <string name="today">Today</string>
     <string name="yesterday">Yesterday</string>
+    <string name="selected_state">Selected</string>
+    <string name="not_selected_state">Not selected</string>
     <string name="n_selected">%1$d selected</string>
     <string name="send_n_size">Send (%1$d) \u00b7 %2$s</string>
     <string name="share">Share</string>

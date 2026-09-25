@@ -334,6 +334,18 @@ tap_bounds() {
 }
 
 # Screen text is the cheapest assertion available on a real device, and it is what a user reads.
+# Each selection mark carries its state in the content description ("Selected" / "Not selected"),
+# which is what a screen reader announces. Counting those is how the gate checks that the grid
+# shows what the bar claims - the ticks are drawn views, not platform check boxes.
+ticked_marks() {
+  if adb shell uiautomator dump /sdcard/mc-ui.xml >/dev/null 2>&1; then
+    adb shell cat /sdcard/mc-ui.xml 2>/dev/null | tr '>' '\n' \
+      | grep -c 'content-desc="Selected"'
+  else
+    echo 0
+  fi
+}
+
 screen_shows_ci() {
   local ui
   ui=$(dump_ui) || return 1
@@ -476,15 +488,10 @@ for i in 0 1 2 3; do
       tap_bounds "$SELALL"
       sleep 2
       SELTEXT=$(dump_texts)
-      # The check boxes are real views with a real state; the bar could say "3 selected" while
-      # the tiles show nothing, which is precisely the kind of half-updated screen a user reports
-      # as "it doesn't work".
+      # The tiles carry their own state; the bar could say "3 selected" while the grid shows
+      # nothing, which is the half-updated screen a user reports as "it does not work".
       CLAIMED=$(printf '%s' "$SELTEXT" | grep -o '[0-9]* selected' | grep -o '[0-9]*' | head -1)
-      if adb shell uiautomator dump /sdcard/mc-ui.xml >/dev/null 2>&1; then
-        TICKED=$(adb shell cat /sdcard/mc-ui.xml 2>/dev/null | tr '>' '\n' | grep -c 'checked="true"')
-      else
-        TICKED=0
-      fi
+      TICKED=$(ticked_marks)
       # The bar counting N is not the same as N tiles looking selected. It was: the ring was drawn
       # over the tick of the first tile and one check box rendered an animated state, so the grid
       # showed two ticks for "3 selected".
@@ -514,11 +521,7 @@ for i in 0 1 2 3; do
             *"1 selected"*|*"2 selected"*|*"3 selected"*)
               bad "Clear all did not clear the selection - screen says: ${CLEARTEXT:0:380}" ;;
             *)
-              if adb shell uiautomator dump /sdcard/mc-ui.xml >/dev/null 2>&1; then
-                LEFT=$(adb shell cat /sdcard/mc-ui.xml 2>/dev/null | tr '>' '\n' | grep -c 'checked="true"')
-              else
-                LEFT=0
-              fi
+              LEFT=$(ticked_marks)
               if [ "${LEFT:-0}" -eq 0 ]; then
                 ok "Clear all clears the day in one tap, tiles included"
               else
