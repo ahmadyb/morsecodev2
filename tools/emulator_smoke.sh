@@ -476,6 +476,19 @@ for i in 0 1 2 3; do
       tap_bounds "$SELALL"
       sleep 2
       SELTEXT=$(dump_texts)
+      # The check boxes are real views with a real state; the bar could say "3 selected" while
+      # the tiles show nothing, which is precisely the kind of half-updated screen a user reports
+      # as "it doesn't work".
+      if adb shell uiautomator dump /sdcard/mc-ui.xml >/dev/null 2>&1; then
+        TICKED=$(adb shell cat /sdcard/mc-ui.xml 2>/dev/null | tr '>' '\n' | grep -c 'checked="true"')
+      else
+        TICKED=0
+      fi
+      if [ "${TICKED:-0}" -gt 0 ]; then
+        ok "the tiles show the selection (${TICKED} ticked control(s))"
+      else
+        bad "the selection bar counts items the grid does not show as selected"
+      fi
       case "$SELTEXT" in
         *"1 selected"*|*"2 selected"*|*"3 selected"*)
           ok "selecting a day shows the pinned selection bar" ;;
@@ -496,7 +509,18 @@ for i in 0 1 2 3; do
           case "$CLEARTEXT" in
             *"1 selected"*|*"2 selected"*|*"3 selected"*)
               bad "Clear all did not clear the selection - screen says: ${CLEARTEXT:0:380}" ;;
-            *) ok "Clear all clears the day in one tap" ;;
+            *)
+              if adb shell uiautomator dump /sdcard/mc-ui.xml >/dev/null 2>&1; then
+                LEFT=$(adb shell cat /sdcard/mc-ui.xml 2>/dev/null | tr '>' '\n' | grep -c 'checked="true"')
+              else
+                LEFT=0
+              fi
+              if [ "${LEFT:-0}" -eq 0 ]; then
+                ok "Clear all clears the day in one tap, tiles included"
+              else
+                bad "Clear all emptied the bar but left ${LEFT} tile(s) ticked"
+              fi
+              ;;
           esac
           ;;
         *)
@@ -507,6 +531,7 @@ for i in 0 1 2 3; do
       # showed a cleared screen. Select the day again before the shutter.
       SELALL2=$(label_bounds "Select all" || true)
       [ -n "$SELALL2" ] && tap_bounds "$SELALL2"
+      sleep 2   # the screenshot is evidence: it must not catch a half-drawn frame
     else
       bad "no Select all on the Files tab with media present"
     fi
