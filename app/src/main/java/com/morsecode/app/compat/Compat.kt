@@ -309,6 +309,19 @@ object Compat {
         }
     }
 
+    /** Take down a foreground service's notification, on any API level. */
+    fun stopForeground(service: android.app.Service) {
+        try {
+            if (isApi24) {
+                service.stopForeground(android.app.Service.STOP_FOREGROUND_REMOVE)
+            } else {
+                @Suppress("DEPRECATION")
+                service.stopForeground(true)
+            }
+        } catch (t: Throwable) {
+        }
+    }
+
     fun requestBluetooth(activity: Activity) {
         try {
             val a = android.bluetooth.BluetoothAdapter.getDefaultAdapter()

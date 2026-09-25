@@ -261,13 +261,9 @@ class MediaLibrary(private val ctx: Context) {
      * `application/octet-stream`, and a file the user can see must never be missing from the count
      * above it.
      */
-    enum class FileGroup(val labelRes: Int) {
-        DOCUMENTS(com.morsecode.app.R.string.cat_documents),
-        EBOOKS(com.morsecode.app.R.string.cat_ebooks),
-        ARCHIVES(com.morsecode.app.R.string.cat_archives),
-        APKS(com.morsecode.app.R.string.cat_apks),
-        LARGE(com.morsecode.app.R.string.cat_large)
-    }
+    // No label resource here on purpose: this directory is compiled against the platform jar, with
+    // no access to the app's generated R class. The screen owns the wording.
+    enum class FileGroup { DOCUMENTS, EBOOKS, ARCHIVES, APKS, LARGE }
 
     /** Everything over this shows up under "Large files" (the design's own label). */
     private val largeBytes = 50L * 1024 * 1024

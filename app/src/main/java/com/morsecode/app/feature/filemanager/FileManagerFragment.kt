@@ -204,7 +204,7 @@ class FileManagerFragment(private val activity: Activity) : Screen {
         }
         val title = when {
             inFolder -> dir?.name?.ifBlank { ctx.getString(R.string.storage_root) } ?: ""
-            group != null -> ctx.getString(group!!.labelRes)
+            group != null -> groupLabel(group!!)
             else -> ctx.getString(R.string.tab_files)
         }
         row.addView(W.label(ctx, title, 21f, ThemeColors.text(ctx), bold = true))
@@ -338,7 +338,7 @@ class FileManagerFragment(private val activity: Activity) : Screen {
             val row = W.row(ctx, 12, 8)
             row.addView(categoryIcon(g))
             row.addView(W.hgap(ctx, 12))
-            row.addView(W.label(ctx, ctx.getString(g.labelRes), 14.5f, ThemeColors.text(ctx), bold = true),
+            row.addView(W.label(ctx, groupLabel(g), 14.5f, ThemeColors.text(ctx), bold = true),
                 LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             val count = W.label(ctx, "\u2026", 12f, ThemeColors.text2(ctx), mono = true)
             countViews[g] = count
@@ -387,6 +387,17 @@ class FileManagerFragment(private val activity: Activity) : Screen {
             }
         }
     }
+
+    /** The wording lives here, not in the library: compat/ has no R class. */
+    private fun groupLabel(g: MediaLibrary.FileGroup): String = activity.getString(
+        when (g) {
+            MediaLibrary.FileGroup.DOCUMENTS -> R.string.cat_documents
+            MediaLibrary.FileGroup.EBOOKS -> R.string.cat_ebooks
+            MediaLibrary.FileGroup.ARCHIVES -> R.string.cat_archives
+            MediaLibrary.FileGroup.APKS -> R.string.cat_apks
+            MediaLibrary.FileGroup.LARGE -> R.string.cat_large
+        }
+    )
 
     private fun categoryIcon(g: MediaLibrary.FileGroup): View {
         val ctx = activity

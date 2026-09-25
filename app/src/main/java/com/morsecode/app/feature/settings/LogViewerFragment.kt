@@ -11,6 +11,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import com.morsecode.app.R
 import com.morsecode.app.core.logging.LogStore
+import com.morsecode.app.core.ui.ResultAware
 import com.morsecode.app.core.ui.Screen
 import com.morsecode.app.core.ui.Ui
 import com.morsecode.app.core.ui.W
@@ -26,7 +27,7 @@ import com.morsecode.app.util.ThemeColors
  * The log viewer: live tail, level filter, text filter, export and clear.
  * Monospaced because log lines are read column-first.
  */
-class LogViewerFragment(private val activity: Activity) : Screen {
+class LogViewerFragment(private val activity: Activity) : Screen, ResultAware {
 
     private var errorsOnly = false
     private var filter = ""

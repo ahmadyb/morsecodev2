@@ -81,16 +81,7 @@ class TransferService : Service() {
         stopSelf()
     }
 
-    private fun stopForegroundCompat() {
-        try {
-            if (Compat.isApi24) stopForeground(STOP_FOREGROUND_REMOVE)
-            else {
-                @Suppress("DEPRECATION")
-                stopForeground(true)
-            }
-        } catch (t: Throwable) {
-        }
-    }
+    private fun stopForegroundCompat() = Compat.stopForeground(this)
 
     private fun startForegroundCompat() {
         val notification = Compat.buildNotification(
