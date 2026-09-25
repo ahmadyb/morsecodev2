@@ -166,6 +166,14 @@ class ConnectFragment(
         }
         col.addView(row)
 
+        if (engine.transportKind.value == TransportKind.NEARBY) {
+            // The single most useful sentence for "the other device is not showing up", shown
+            // whether or not the radio setup has a problem.
+            col.addView(W.gap(ctx, 8))
+            col.addView(W.label(ctx, ctx.getString(R.string.nearby_sender_hint), 11.5f,
+                ThemeColors.text2(ctx)))
+        }
+
         val token = engine.nearbyProblem()
         if (token != null) {
             col.addView(W.gap(ctx, 10))

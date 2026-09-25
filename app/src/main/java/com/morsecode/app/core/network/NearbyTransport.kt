@@ -101,8 +101,18 @@ class NearbyTransport(
             Log.warn("Nearby (Bluetooth) permission missing - the nearby permissions are not granted")
             return
         }
+        // Open the RFCOMM server *before* claiming to be running: listenUsingRfcommWithServiceRecord
+        // fails immediately on a device whose Bluetooth stack cannot do it, and a transport that
+        // says it started while nothing is listening is exactly the state this bug report was in.
+        val ss = try {
+            ad.listenUsingRfcommWithServiceRecord(serviceName, serviceUuid)
+        } catch (t: Throwable) {
+            Log.warn("Bluetooth server could not start: ${t.message}")
+            return
+        }
+        serverSocket = ss
         running = true
-        startServer(ad)
+        acceptLoop(ad, ss)
         startDiscovery(ad)
         Log.info("Nearby (Bluetooth) transport started as $deviceName (discoverable=${Compat.isDiscoverable()})")
     }
@@ -119,17 +129,11 @@ class NearbyTransport(
         Log.info("Nearby (Bluetooth) transport stopped")
     }
 
-    private fun startServer(ad: BluetoothAdapter) {
+    private fun acceptLoop(ad: BluetoothAdapter, ss: BluetoothServerSocket) {
         acceptThread = Thread({
-            try {
-                val ss = ad.listenUsingRfcommWithServiceRecord(serviceName, serviceUuid)
-                serverSocket = ss
-                while (running) {
-                    val socket = try { ss.accept() } catch (t: Throwable) { break } ?: continue
-                    Workers.runNamed("mc-bt-in") { handleIncoming(socket) }
-                }
-            } catch (t: Throwable) {
-                Log.warn("Bluetooth server stopped: ${t.message}")
+            while (running) {
+                val socket = try { ss.accept() } catch (t: Throwable) { break } ?: continue
+                Workers.runNamed("mc-bt-in") { handleIncoming(socket) }
             }
         }, "mc-bt-server").apply { isDaemon = true; start() }
     }

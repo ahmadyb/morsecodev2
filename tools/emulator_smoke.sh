@@ -383,11 +383,29 @@ for i in 0 1 2 3; do
       tap_bounds "$NEARBY_PILL"
       sleep 3
       CTEXT=$(dump_texts)
+      # The bug was that choosing Nearby changed the label and nothing else: the screen still
+      # drove the Wi-Fi transport, so the radio the user selected was never started.
+      NBLOG=$(adb logcat -d -s "$LOGCAT_TAG":V 2>/dev/null | grep -E "Nearby \(Bluetooth\)|Bluetooth server" | tail -1)
+      if [ -n "$NBLOG" ]; then
+        ok "choosing Nearby reaches the Bluetooth transport (app log: ${NBLOG:0:120})"
+      else
+        bad "choosing Nearby started nothing - no Bluetooth line in the app log"
+      fi
       case "$CTEXT" in
-        *Bluetooth*)
-          ok "choosing Nearby explains the Bluetooth state" ;;
+        *Nearby*) ok "the Connect screen shows Nearby as the selected transport" ;;
+        *) bad "the Connect screen does not reflect the transport choice - says: ${CTEXT:0:380}" ;;
+      esac
+      # When the transport could not come up, the screen owes the user a reason and a way out.
+      case "$NBLOG" in
+        *"did not start"*|*"permission missing"*|*"could not start"*|*"Bluetooth is off"*)
+          case "$CTEXT" in
+            *Bluetooth*)
+              ok "a Bluetooth that cannot run is explained on screen" ;;
+            *)
+              bad "the transport refused to start without saying why - screen says: ${CTEXT:0:380}" ;;
+          esac ;;
         *)
-          bad "choosing Nearby says nothing about Bluetooth - screen says: ${CTEXT:0:380}" ;;
+          note "this device reports a usable Bluetooth adapter, so there is no refusal to explain" ;;
       esac
       shot connect-nearby
       # and switching back must land on the Wi-Fi search again
