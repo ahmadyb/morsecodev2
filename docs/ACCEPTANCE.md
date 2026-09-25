@@ -21,7 +21,7 @@ physical phones without a debugger. Ports used: **UDP 33457** (discovery), **TCP
 | 13 | Broadcast | A selects 3 peers, sends one batch | Radar switches to topology (≤4 cards, dashed links). Per-peer strips show counts. One **"Broadcasting to N phones"** card with combined MB/s. |
 | 14 | Broadcast summary | Let it finish | One group summary: "Sent to 3/3 devices" with PEERS / TOTAL MB / MB SENT cells; History shows **one** row "Broadcast · 3 phones". |
 | 15 | Broadcast cap | Try to select a 5th peer | "Maximum 4 devices per group." and the selection is refused. |
-| 16 | Nearby fallback | No shared Wi-Fi: switch transport to Nearby on both | Peers appear over Bluetooth (RFCOMM) and a file transfers end to end. |
+| 16 | Nearby transfer | No shared Wi-Fi. Both phones: Connect → **Nearby** → Send on A, Receive on B | B's Receive screen asks the system to make it discoverable (accept the dialog) and stays open. A finds B within ~10 s and a file transfers end to end. **Prerequisites, in order — if A's list stays empty, one of these is missing:** (a) both phones on the same transport (the pill is filled on both); (b) B is on its **Receive** screen, not the home screen — a phone that is merely listening is not discoverable, which is what classic Bluetooth inquiry reads; (c) B's Bluetooth is on and Nearby's permissions are granted — Connect shows a card naming whichever is missing, with a button that fixes it; (d) if either phone has no Bluetooth adapter at all, the card says so and Wi-Fi LAN is the only option. Connection Doctor reports all four, including whether the phone is discoverable *right now*. |
 | 17 | WebShare start | A: toggle WebShare ON | Card shows the address `http://<ip>:33455`; a "WebShare is running" notification appears; the URL opens from a laptop on the same Wi-Fi. |
 | 18 | Browser consent | Laptop opens the URL | Phone shows **"Browser wants access"** — "A browser session wants to browse your phone." Accept → SPA loads; Reject → "Session rejected on the phone."; no answer within 30 s → the waiting page. |
 | 19 | WebShare SPA | Browse from the laptop | Sidebar counts live; day headers appear once; folders open with a sticky, clickable breadcrumb; music starts a persistent player that keeps playing across navigation (INV-5); one Upload UI at a time (INV-6). |
@@ -29,7 +29,32 @@ physical phones without a debugger. Ports used: **UDP 33457** (discovery), **TCP
 | 21 | Media paging (INV-10, INV-9) | Open Files with > 2 000 photos | Grid pages in without a `LIMIT/OFFSET` in the sort string; newest day first, day groups correct, no frozen scroll. |
 | 22 | Theme + accents | Settings → pick each of the 5 accents, toggle dark/light, apply a theme overlay | Every surface recolours immediately; dark = a-series mocks, light = b-series mocks; no clipped or invisible text. |
 | 23 | Diagnostics + release hygiene | Settings → Connection Doctor / Log viewer; then check the shipped artifacts | Doctor lists Wi-Fi / peers / multicast / Bluetooth / permissions / battery with colour lights; the log tails live, exports to .txt and filters errors. The release page carries a **signed** debug APK, release APK and `.aab`, all `minSdk 21`, `targetSdk 34`, `applicationId com.morsecode.app`. |
-| 24 | Launch gate (automated) | Any push or tag | `Build & Release` builds, installs the release APK on an Android 14 emulator, opens it, walks all four tabs and fails the run on a crash, an ANR or a dead process. It seeds the device with three photos and fails if the Files grid reports 0 items while the library holds rows (or the screen says "No photos yet" with media present) — an empty grid that used to pass silently. It also drives **WebShare** end to end over `adb forward`: the waiting page before consent, the exact "Browser wants access" copy, the file browser (with no QR) and `/api/counts` after it, then a clean stop. The screenshots are committed to `docs/screenshots/`. A red gate means no release is published. |
+| 24 | Launch gate (automated) | Any push or tag | `Build & Release` builds, installs the release APK on an Android 14 emulator, opens it, drives the whole app and fails the run on a crash, an ANR or a dead process. What it asserts is listed under the table. A red gate means no release is published. |
+
+### What the launch gate checks (test 24)
+
+Every item below is an assertion in `tools/emulator_smoke.sh`; the run publishes only the
+screenshots it captured this time, into `docs/screenshots/`.
+
+* **It opens and survives.** No crash, no ANR, no dead process, on any of the four tabs, and the
+  Files tab never claims it needs storage permission (grants were made at install time).
+* **It is reading the library.** Three seeded photos must come back out: the grid reports
+  `N of M` in the app log and the gate fails if `M > 0` while `N = 0`, or if the screen says
+  "No photos yet" with media on the device.
+* **Selection.** `Select all` in a day shows a selection count and a visible `Send`; the same
+  control flips to `Clear all` and clears the day in one tap; the screenshots are taken with a
+  selection standing, since that is the state they document.
+* **Day headers** do not print the day twice.
+* **The Files hub** shows its categories with counts (Documents, Ebooks, Archives, APKs, Large
+  files) and its folders (Download, Internal storage), and Internal storage opens as a browser.
+* **The transport choice** is on the Connect screen. Choosing Nearby must reach the Bluetooth
+  transport (the app log records which transport started and whether it is running); if it could
+  not start, the screen must say why. The gate does not require a warning to appear, because that
+  depends on the radio state of the machine it runs on.
+* **WebShare**, end to end over `adb forward`: the waiting page before consent, the exact
+  "Browser wants access" copy, the file browser after consent with `/api/counts`, no QR
+  anywhere, then a clean stop.
+* **The theme switch** in Settings, asked of the browser itself over `/api/hello`.
 
 ## How to verify the artifacts
 

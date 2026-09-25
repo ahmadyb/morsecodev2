@@ -502,6 +502,11 @@ for i in 0 1 2 3; do
         *)
           bad "Select all does not offer to clear the selection again - screen says: ${SELTEXT:0:380}" ;;
       esac
+      # The screenshot is the only artifact a person can check at a glance, and it was being
+      # taken after the toggle was turned back off: the committed picture of "the selection bar"
+      # showed a cleared screen. Select the day again before the shutter.
+      SELALL2=$(label_bounds "Select all" || true)
+      [ -n "$SELALL2" ] && tap_bounds "$SELALL2"
     else
       bad "no Select all on the Files tab with media present"
     fi
