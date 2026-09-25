@@ -135,10 +135,17 @@ jobs:
         run: |
           set -euo pipefail
           echo "::warning title=fallback::Gradle failed - building with the offline toolchain"
-          curl -fsSL -o /tmp/kotlin.zip \
-            https://github.com/JetBrains/kotlin/releases/download/v1.9.24/kotlin-compiler-1.9.24.zip
-          unzip -q /tmp/kotlin.zip -d /tmp
+          if [ ! -x /tmp/kotlinc/bin/kotlinc ]; then
+            curl -fSL --retry 3 --retry-delay 5 -o /tmp/kotlin.zip \
+              https://github.com/JetBrains/kotlin/releases/download/v1.9.24/kotlin-compiler-1.9.24.zip
+            unzip -q -o /tmp/kotlin.zip -d /tmp
+            chmod +x /tmp/kotlinc/bin/* 2>/dev/null || true
+          fi
+          export KOTLINC=/tmp/kotlinc/bin/kotlinc
           export KOTLINC_PATH=/tmp/kotlinc/bin/kotlinc
+          /tmp/kotlinc/bin/kotlinc -version 2>&1 | head -1 | while IFS= read -r line; do
+            echo "::notice title=kotlinc::${line}"
+          done
           export JAVA_OPTS="-Xmx3g -XX:MaxMetaspaceSize=768m"
           set +e
           python3 tools/offline_build.py 2>&1 | tee /tmp/offline.log
@@ -232,13 +239,29 @@ jobs:
           echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
 
+      # Downloads the compiler, proves it runs, and only then hands the path on. A download that
+      # reports success but leaves nothing behind used to surface as "kotlinc not found" two steps
+      # later, with no clue which step was at fault.
       - name: Fetch the Kotlin compiler
         run: |
           set -euo pipefail
-          curl -fsSL -o /tmp/kotlin.zip \
-            https://github.com/JetBrains/kotlin/releases/download/v1.9.24/kotlin-compiler-1.9.24.zip
-          unzip -q /tmp/kotlin.zip -d /tmp
+          fetch() {
+            rm -rf /tmp/kotlinc
+            curl -fSL --retry 3 --retry-delay 5 -o /tmp/kotlin.zip \
+              https://github.com/JetBrains/kotlin/releases/download/v1.9.24/kotlin-compiler-1.9.24.zip
+            unzip -q -o /tmp/kotlin.zip -d /tmp
+            chmod +x /tmp/kotlinc/bin/* 2>/dev/null || true
+            [ -x /tmp/kotlinc/bin/kotlinc ]
+          }
+          if ! fetch; then
+            echo "::warning title=kotlinc::first download attempt left no compiler - retrying once"
+            fetch
+          fi
+          /tmp/kotlinc/bin/kotlinc -version 2>&1 | head -2 | while IFS= read -r line; do
+            echo "::notice title=kotlinc::${line}"
+          done
           echo "KOTLINC=/tmp/kotlinc/bin/kotlinc" >> "$GITHUB_ENV"
+          echo "KOTLINC_PATH=/tmp/kotlinc/bin/kotlinc" >> "$GITHUB_ENV"
 
       # This is the path the README tells a local build to use, and it was silently producing an
       # APK without the Kotlin runtime. Building it on every push keeps it honest; the dependency

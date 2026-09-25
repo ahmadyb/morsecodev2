@@ -147,8 +147,12 @@ def tools(args, need_kotlinc=True):
     if need_kotlinc:
         kotlinc = find_tool(
             args.kotlinc,
-            ["KOTLINC"],
+            # The workflow exports KOTLINC; its fallback step used to export KOTLINC_PATH, which
+            # nothing read - so a Gradle build that fell back to this toolchain could never find
+            # the compiler it had just downloaded.
+            ["KOTLINC", "KOTLINC_PATH"],
             [
+                "/tmp/kotlinc/bin/kotlinc",
                 "/tmp/pkgs/kc/package/bin/kotlinc",
                 os.path.join(ROOT, "tools", "kotlinc", "bin", "kotlinc"),
             ],
