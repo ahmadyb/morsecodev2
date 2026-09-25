@@ -30,10 +30,11 @@ releases page — `dist/` is only ever a local scratch directory.
 
 ~1 MB, against 4–8 MB for a comparable app. There is no AndroidX, no Material Components and no
 Compose: every screen, sheet, radar animation and the browser SPA is built on platform APIs, and
-the dex holds 1506 classes of application code plus the Kotlin runtime — `tools/dexcheck.py` prints
-the exact count for the build you are holding, and fails the build if anything the app calls is
-missing from it (the released 1.0.4 APKs report "1506 classes defined, 0 unresolved reference(s)",
-and the broker prints those numbers as CI notices on every run):
+the dex holds around 1 500 classes of application code plus the Kotlin runtime (the released 1.0.4
+APKs report **1507 classes defined, 0 unresolved reference(s)**) — `tools/dexcheck.py` prints the
+count for the build you are holding, and fails the build if anything the app calls is missing from
+it. The CI job prints those numbers as a notice on every run, so this line can be checked rather
+than believed:
 
 ```bash
 python3 tools/dexcheck.py dist/MorseCode-1.0.4-release.apk
