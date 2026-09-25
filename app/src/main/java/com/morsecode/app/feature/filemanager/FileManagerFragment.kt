@@ -1084,7 +1084,12 @@ class FileManagerFragment(private val activity: Activity) : Screen {
         view.addView(W.hgap(ctx, 8))
         val send = W.successButton(ctx, ctx.getString(R.string.send))
         send.onClick { startSendFlow() }
-        view.addView(send)
+        // The buttons W builds are as wide as their parent, which is what a column wants and what
+        // a row must not have: in a horizontal bar "as wide as the parent" pushed the button's own
+        // label past the right edge, and the bar came up showing a count and no Send.
+        view.addView(send, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ))
         val lp = FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
         )
