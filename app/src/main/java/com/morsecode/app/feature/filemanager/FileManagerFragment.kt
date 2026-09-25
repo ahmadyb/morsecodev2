@@ -623,7 +623,7 @@ class FileManagerFragment(private val activity: Activity) : Screen {
         col.addView(W.label(ctx, meta, 11.5f, ThemeColors.text2(ctx), mono = true))
         row.addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         val check = CheckBox(ctx)
-        check.isChecked = selected.containsKey(uri)
+        markCheck(check, selected.containsKey(uri))
         check.isClickable = false
         check.isFocusable = false
         checks[uri] = check
@@ -809,15 +809,8 @@ class FileManagerFragment(private val activity: Activity) : Screen {
             lp.setMargins(0, 0, D.dp(ctx, 6f), D.dp(ctx, 6f))
             frame.addView(badge, lp)
         }
-        val check = CheckBox(ctx)
-        check.isChecked = selected.containsKey(item.uri)
-        check.isClickable = false
-        check.isFocusable = false
-        val clp = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        clp.gravity = Gravity.TOP or Gravity.END
-        clp.setMargins(0, D.dp(ctx, 2f), D.dp(ctx, 6f), 0)
-        frame.addView(check, clp)
-        checks[item.uri] = check
+        // The ring is added first so the tick draws above it: the ring is a tint over the whole
+        // tile and used to sit on top of the check box.
         val ring = View(ctx)
         val rd = GradientDrawable()
         rd.setShape(GradientDrawable.RECTANGLE)
@@ -828,6 +821,15 @@ class FileManagerFragment(private val activity: Activity) : Screen {
         ring.visibility = if (selected.containsKey(item.uri)) View.VISIBLE else View.GONE
         frame.addView(ring, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         rings[item.uri] = ring
+        val check = CheckBox(ctx)
+        markCheck(check, selected.containsKey(item.uri))
+        check.isClickable = false
+        check.isFocusable = false
+        val clp = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        clp.gravity = Gravity.TOP or Gravity.END
+        clp.setMargins(0, D.dp(ctx, 2f), D.dp(ctx, 6f), 0)
+        frame.addView(check, clp)
+        checks[item.uri] = check
         val picked = mediaPicked(item)
         frame.isClickable = true
         frame.onClick { toggle(picked) }
@@ -882,7 +884,7 @@ class FileManagerFragment(private val activity: Activity) : Screen {
             11.5f, ThemeColors.text2(ctx), mono = true))
         row.addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         val check = CheckBox(ctx)
-        check.isChecked = selected.containsKey(item.uri)
+        markCheck(check, selected.containsKey(item.uri))
         check.isClickable = false
         check.isFocusable = false
         checks[item.uri] = check
@@ -1042,9 +1044,18 @@ class FileManagerFragment(private val activity: Activity) : Screen {
         refreshBar()
     }
 
+    /** Set a check box and settle its animation immediately, attached or not. */
+    private fun markCheck(check: CheckBox, on: Boolean) {
+        check.isChecked = on
+        try {
+            check.jumpDrawablesToCurrentState()
+        } catch (t: Throwable) {
+        }
+    }
+
     private fun refreshIndicators() {
         for ((uri, check) in checks) {
-            check.isChecked = selected.containsKey(uri)
+            markCheck(check, selected.containsKey(uri))
         }
         for ((uri, ring) in rings) {
             ring.visibility = if (selected.containsKey(uri)) View.VISIBLE else View.GONE

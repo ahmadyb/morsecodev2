@@ -479,15 +479,19 @@ for i in 0 1 2 3; do
       # The check boxes are real views with a real state; the bar could say "3 selected" while
       # the tiles show nothing, which is precisely the kind of half-updated screen a user reports
       # as "it doesn't work".
+      CLAIMED=$(printf '%s' "$SELTEXT" | grep -o '[0-9]* selected' | grep -o '[0-9]*' | head -1)
       if adb shell uiautomator dump /sdcard/mc-ui.xml >/dev/null 2>&1; then
         TICKED=$(adb shell cat /sdcard/mc-ui.xml 2>/dev/null | tr '>' '\n' | grep -c 'checked="true"')
       else
         TICKED=0
       fi
-      if [ "${TICKED:-0}" -gt 0 ]; then
-        ok "the tiles show the selection (${TICKED} ticked control(s))"
+      # The bar counting N is not the same as N tiles looking selected. It was: the ring was drawn
+      # over the tick of the first tile and one check box rendered an animated state, so the grid
+      # showed two ticks for "3 selected".
+      if [ "${TICKED:-0}" -ge "${CLAIMED:-1}" ] && [ "${TICKED:-0}" -gt 0 ]; then
+        ok "the tiles show the selection (${TICKED} ticked for ${CLAIMED:-?} selected)"
       else
-        bad "the selection bar counts items the grid does not show as selected"
+        bad "the bar says ${CLAIMED:-?} selected but only ${TICKED:-0} tile(s) show a tick"
       fi
       case "$SELTEXT" in
         *"1 selected"*|*"2 selected"*|*"3 selected"*)
