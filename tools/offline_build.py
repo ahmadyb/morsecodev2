@@ -35,6 +35,12 @@ import zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 KOTLINC_PATH = "kotlinc"
+
+# What a failure looks like, in the output of every tool this build drives.
+ERR_MARKERS = __import__("re").compile(
+    r"(^|\s)(error|ERROR|Error):|error:|FAILED|FAILURE|Exception|Caused by|Unresolved|"
+    r"cannot find symbol|could not|No such file",
+)
 APP = os.path.join(ROOT, "app")
 MAIN = os.path.join(APP, "src", "main")
 BUILD = os.path.join(ROOT, "build")
@@ -210,6 +216,14 @@ class Sh:
             # reports its failures through CI annotations that only keep the tail of the log -
             # so repeat the head of the error last, where it survives.
             lines = [ln for ln in (p.stdout or "").splitlines() if ln.strip()]
+            # The lines that actually say what is wrong come first: a compiler error, a Kotlin
+            # "error:", an exception. They are usually in the middle of the output, and the
+            # annotation channel keeps only the end of it.
+            bad = [ln for ln in lines if ERR_MARKERS.search(ln) and "FAILURE-" not in ln]
+            if bad:
+                print("FAILURE-ERROR-LINES:")
+                for line in bad[:30]:
+                    print("    " + line)
             print("FAILURE-FIRST-LINES:")
             for line in lines[:25]:
                 print("    " + line)
