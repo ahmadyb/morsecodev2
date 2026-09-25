@@ -30,11 +30,12 @@ releases page — `dist/` is only ever a local scratch directory.
 
 ~1 MB, against 4–8 MB for a comparable app. There is no AndroidX, no Material Components and no
 Compose: every screen, sheet, radar animation and the browser SPA is built on platform APIs, and
-the dex holds 442 classes of application code plus the Kotlin runtime. `tools/dexcheck.py` prints
-exactly what is inside, and fails the build if anything the app calls is missing:
+the dex holds a few hundred classes of application code plus the Kotlin runtime — `tools/dexcheck.py`
+prints the exact count for the build you are holding, and fails the build if anything the app calls
+is missing from it:
 
 ```bash
-python3 tools/dexcheck.py dist/MorseCode-1.0.3-release.apk
+python3 tools/dexcheck.py dist/MorseCode-1.0.4-release.apk
 ```
 
 ### 1. Offline script (no network, no Gradle, no Android Studio required)
@@ -81,8 +82,8 @@ Every push is built on GitHub Actions, opened on an emulator and then published,
 straight from [the releases page](https://github.com/ahmadyb/morsecodev2/releases/latest):
 
 ```bash
-adb install -r MorseCode-1.0.3-release.apk         # phones
-# MorseCode-1.0.3.aab -> Play Console -> Internal testing -> upload
+adb install -r MorseCode-1.0.4-release.apk         # phones
+# MorseCode-1.0.4.aab -> Play Console -> Internal testing -> upload
 ```
 
 > **v1.0.0 could not open.** The first release compiled but died on the first frame
@@ -98,6 +99,19 @@ adb install -r MorseCode-1.0.3-release.apk         # phones
 > queries now start with the columns the unified table really has and fall back by dropping the
 > optional ones (from the per-type tables), which the emulator gate now asserts: an empty grid on a
 > device that holds media fails the run.
+
+> **v1.0.3 opened the Files tab's real content.** The library queries above returned rows, but the
+> Files tab rebuilt its whole view on every tap and re-ran every query while it did, so opening
+> Photos on a phone with a few thousand pictures took seconds. v1.0.3 caches the query windows and
+> pages the grid, and CI now asserts that a day header says the day once.
+>
+> **v1.0.4 is the bug batch from using 1.0.3 on a phone.** WebShare refused a PC hotspot with no
+> internet because it asked which network had the default route instead of whether a link existed;
+> selection bars were appended to the scrolling content, so on a long day "Select all" showed no
+> Send; "Select all" could only add; Documents was a bucket filter that renamed files; crashes and
+> logs lived in a ring buffer that died with the process; the transfer notification had no stop;
+> and Send/Receive refused without offering to turn the radios on. All of that is fixed and driven
+> by the emulator gate, which now walks the Files hub and the selection bar too.
 
 ### 3. CI — builds and publishes the release
 

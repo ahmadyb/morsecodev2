@@ -26,7 +26,7 @@ permissions:
   contents: write
 
 env:
-  DEFAULT_VERSION: "1.0.3"
+  DEFAULT_VERSION: "1.0.4"
   ANDROID_BUILD_TOOLS: "34.0.0"
 
 jobs:
@@ -297,7 +297,9 @@ jobs:
       - name: Re-check the produced APKs
         run: |
           for apk in dist/*.apk; do
-            python3 tools/dexcheck.py "$apk"
+            python3 tools/dexcheck.py "$apk" | while IFS= read -r line; do
+              echo "::notice title=dexcheck $(basename "$apk")::${line}"
+            done
           done
 
       - name: Upload the offline build
@@ -482,6 +484,20 @@ jobs:
             This build was installed and driven through all four tabs on an Android 14 (API 34)
             emulator before publishing — the screenshots are the `MorseCode-screenshots` workflow
             artifact.
+
+            ### What changed in 1.0.4
+
+            * **Files** is a real file manager: category hub with live counts (Documents, Ebooks,
+              Archives, APKs, Large files), Download and Internal storage, a clickable address bar,
+              folders as well as files, and original file names instead of provider names.
+            * Selecting photos, videos, music, apps or files shows a pinned bar with
+              share / delete / close / **Send** — and "Select all" in a day is a toggle.
+            * Thumbnails appear on the first launch, not the fifth.
+            * Crashes and logs are written to disk, survive leaving the app, and can be copied or
+              exported to a text file; the transfer notification has its own **Stop**.
+            * Send / Receive offers to turn Wi-Fi or Bluetooth on instead of just refusing.
+            * WebShare accepts a phone connected to a PC hotspot with no internet.
+            * Day headers say the day once, and the radar scales with the screen.
 
             Built from `${{ github.sha }}` · versionCode `${{ needs.build.outputs.code }}` ·
             minSdk 21 · targetSdk 34 · applicationId `com.morsecode.app`
