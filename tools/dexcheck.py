@@ -173,7 +173,9 @@ def main():
 
     defined, missing = check(args.archive, android_jar)
     if not args.quiet:
-        print("%s: %d classes defined, %d distinct classes referenced"
+        # `missing` is what could not be resolved, not what is referenced - the old wording read
+        # as "this APK references nothing", which is the opposite of the good news it reports.
+        print("%s: %d classes defined, %d unresolved reference(s)"
               % (os.path.basename(args.archive), defined, len(set(missing)) or 0))
         if android_jar:
             print("   platform: %s" % android_jar)
