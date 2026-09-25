@@ -283,8 +283,15 @@ LABELS=("Connect" "Files" "History" "Settings")
 # Prefer the real bounds of the nav label from the view hierarchy: tapping a fixed fraction of
 # the screen only works until the layout, the density or the system bar changes.
 dump_ui() {
-  adb shell uiautomator dump /sdcard/mc-ui.xml >/dev/null 2>&1 || return 1
-  adb shell cat /sdcard/mc-ui.xml 2>/dev/null
+  local tries=0
+  while [ "$tries" -lt 3 ]; do
+    if adb shell uiautomator dump /sdcard/mc-ui.xml >/dev/null 2>&1; then
+      adb shell cat /sdcard/mc-ui.xml 2>/dev/null && return 0
+    fi
+    tries=$((tries + 1))
+    sleep 1
+  done
+  return 1
 }
 
 label_bounds() {
@@ -300,6 +307,24 @@ label_bounds_top() {
     | sed 's/[^0-9]/ /g' | awk '{print $2" "$1" "$4" "$3}' | sort -n | head -1 | awk '{print $2" "$1" "$4" "$3}'
 }
 
+# The same, but only nodes that actually handle taps. A screen's title is a TextView with the same
+# wording as the control that opens it, and tapping the title does nothing.
+# Everything the screen says, as `text="..."` entries. One dump, so the checks in a block all
+# describe the same frame - and a failure can quote the whole page instead of guessing.
+dump_texts() {
+  local ui
+  if ! ui=$(dump_ui); then
+    printf '(screen unreadable: uiautomator dump failed)'
+    return 0
+  fi
+  printf '%s' "$ui" | tr '>' '\n' | grep -oE '(text|content-desc)="[^"]*"' | sort -u | tr '\n' ' '
+}
+
+label_bounds_clickable() {
+  dump_ui | tr '>' '\n' | grep "text=\"$1\"" | grep 'clickable="true"' \
+    | grep -o 'bounds="\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]"' | head -1
+}
+
 tap_bounds() {
   local b="$1"
   [ -n "$b" ] || return 1
@@ -309,6 +334,12 @@ tap_bounds() {
 }
 
 # Screen text is the cheapest assertion available on a real device, and it is what a user reads.
+screen_shows_ci() {
+  local ui
+  ui=$(dump_ui) || return 1
+  [[ "${ui^^}" == *"${1^^}"* ]]
+}
+
 screen_shows() {
   local ui
   ui=$(dump_ui) || return 1
@@ -391,57 +422,71 @@ for i in 0 1 2 3; do
     if [ -n "$SELALL" ]; then
       tap_bounds "$SELALL"
       sleep 2
-      if screen_shows "selected"; then
-        ok "selecting a day shows the pinned selection bar"
-        if screen_shows "Send"; then
-          ok "the Send button is visible with a selection"
-        else
-          bad "the selection bar has no visible Send button"
-        fi
-        if screen_shows "Clear all"; then
+      SELTEXT=$(dump_texts)
+      case "$SELTEXT" in
+        *"1 selected"*|*"2 selected"*|*"3 selected"*)
+          ok "selecting a day shows the pinned selection bar" ;;
+        *)
+          bad "tapping Select all did not show a selection count - screen says: ${SELTEXT:0:380}" ;;
+      esac
+      case "$SELTEXT" in
+        *Send*) ok "the Send button is visible with a selection" ;;
+        *) bad "the selection bar has no Send button - screen says: ${SELTEXT:0:380}" ;;
+      esac
+      case "$SELTEXT" in
+        *"Clear all"*)
           ok "Select all becomes Clear all"
           CLEAR=$(label_bounds "Clear all" || true)
           tap_bounds "$CLEAR"
           sleep 2
-          if screen_shows "selected"; then
-            bad "Clear all did not clear the selection"
-          else
-            ok "Clear all clears the day in one tap"
-          fi
-        else
-          bad "Select all does not offer to clear the selection again"
-        fi
-      else
-        bad "tapping Select all did not select anything"
-      fi
+          CLEARTEXT=$(dump_texts)
+          case "$CLEARTEXT" in
+            *"1 selected"*|*"2 selected"*|*"3 selected"*)
+              bad "Clear all did not clear the selection - screen says: ${CLEARTEXT:0:380}" ;;
+            *) ok "Clear all clears the day in one tap" ;;
+          esac
+          ;;
+        *)
+          bad "Select all does not offer to clear the selection again - screen says: ${SELTEXT:0:380}" ;;
+      esac
     else
       bad "no Select all on the Files tab with media present"
     fi
     shot files-selection
 
     # The Files pill is the design's category hub (Documents / Ebooks / Archives / APKs / Large
-    # files, then folders with Download and Internal storage).
-    FILES_PILL=$(label_bounds_top "Files" || true)
+    # files, then folders with Download and Internal storage). The page title carries the same
+    # word as the pill, so the pill is found by being tappable.
+    FILES_PILL=$(label_bounds_clickable "Files" || true)
+    [ -n "$FILES_PILL" ] || FILES_PILL=$(label_bounds_top "Files" || true)
     tap_bounds "$FILES_PILL"
     sleep 3
     shot files-hub
+    HUB_MISSING=""
     for LABEL in "Categories" "Documents" "Ebooks" "Archives" "APKs" "Large files" "Folders" "Internal storage"; do
-      if screen_shows "$LABEL"; then
-        ok "the Files hub shows $LABEL"
-      else
-        bad "the Files hub is missing $LABEL"
-      fi
+      screen_shows_ci "$LABEL" || HUB_MISSING="$HUB_MISSING $LABEL"
     done
+    if [ -z "$HUB_MISSING" ]; then
+      ok "the Files hub shows its categories and folders"
+    else
+      # One line, plus the page's whole vocabulary: a bare list of missing words does not say
+      # whether the tap missed, the hub did not open, or the rows are named differently.
+      bad "the Files hub is missing:$HUB_MISSING"
+      ann "Files hub text: $(dump_ui | tr '>' '\n' | grep -o 'text="[^"]*"' | sort -u \
+        | tr '\n' ' ' | head -c 500)"
+    fi
 
     # Opening Internal storage must give a real browser with a clickable address bar.
     INTERNAL=$(label_bounds "Internal storage" || true)
     tap_bounds "$INTERNAL"
     sleep 3
     shot files-browser
-    if screen_shows "Internal storage"; then
+    if screen_shows_ci "Internal storage" && ! screen_shows_ci "Add a folder"; then
       ok "internal storage opens with a breadcrumb"
     else
       bad "internal storage did not open"
+      ann "Files browser text: $(dump_ui | tr '>' '\n' | grep -o 'text="[^"]*"' | sort -u \
+        | tr '\n' ' ' | head -c 500)"
     fi
   fi
 done

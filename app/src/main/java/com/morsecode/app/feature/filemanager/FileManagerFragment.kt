@@ -299,7 +299,10 @@ class FileManagerFragment(private val activity: Activity) : Screen {
     private fun loadMedia(category: MediaLibrary.Category, gen: Int) {
         offThread {
             val items = sorted(lib.all(category))
-            Log.info("Files: ${items.size} ${category.name.lowercase()} item(s) (${lib.lastNote})")
+            Log.info(
+                "Files: ${items.size} ${category.name.lowercase()} item(s) from the media library " +
+                    "(all=${lib.count(category)}, ${lib.lastNote})"
+            )
             onUi(gen) { mediaList(items) }
         }
     }
@@ -314,7 +317,10 @@ class FileManagerFragment(private val activity: Activity) : Screen {
     private fun loadGroup(g: MediaLibrary.FileGroup, gen: Int) {
         offThread {
             val items = sorted(lib.listGroup(g, 0))
-            Log.info("Files: ${g.name} ${items.size} item(s) (${lib.lastNote})")
+            Log.info(
+                "Files: ${items.size} ${g.name.lowercase()} item(s) from the media library " +
+                    "(all=${lib.countGroup(g)}, ${lib.lastNote})"
+            )
             onUi(gen) { mediaList(items) }
         }
     }
