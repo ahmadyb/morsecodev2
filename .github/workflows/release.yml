@@ -248,6 +248,26 @@ jobs:
           echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
 
+      # Without this the offline path names its APKs after the script's own default version and
+      # stamps versionCode 1 - and when Gradle cannot run, that APK is the one that gets published.
+      - name: Resolve version
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            VER="${GITHUB_REF#refs/tags/}"
+            VER="${VER#v}"
+          else
+            VER="$DEFAULT_VERSION"
+          fi
+          if ! [[ "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::cannot derive a version from '$VER'"
+            exit 1
+          fi
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$VER"
+          echo "MC_VERSION_NAME=$VER" >> "$GITHUB_ENV"
+          echo "MC_VERSION_CODE=$(( MAJOR * 10000 + MINOR * 100 + PATCH ))" >> "$GITHUB_ENV"
+          echo "offline versionName=$VER versionCode=$(( MAJOR * 10000 + MINOR * 100 + PATCH ))"
+
       # Downloads the compiler, proves it runs, and only then hands the path on. A download that
       # reports success but leaves nothing behind used to surface as "kotlinc not found" two steps
       # later, with no clue which step was at fault.
@@ -498,6 +518,12 @@ jobs:
             * Send / Receive offers to turn Wi-Fi or Bluetooth on instead of just refusing.
             * WebShare accepts a phone connected to a PC hotspot with no internet.
             * Day headers say the day once, and the radar scales with the screen.
+            * **Send / Receive over Nearby works.** The Bluetooth transport had been refusing to
+              start on Android 12+ (it asked for a permission Android 12 replaced), the Connect and
+              Receive screens only ever started the Wi-Fi transport, and nothing asked the receiving
+              phone to be discoverable - without which a Bluetooth search cannot see it. The
+              transport is now a visible choice on the Connect screen, and a receiving phone is
+              made discoverable for five minutes at a time while its Receive screen is open.
 
             Built from `${{ github.sha }}` · versionCode `${{ needs.build.outputs.code }}` ·
             minSdk 21 · targetSdk 34 · applicationId `com.morsecode.app`
