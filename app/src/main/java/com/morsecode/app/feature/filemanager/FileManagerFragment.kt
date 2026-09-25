@@ -1073,10 +1073,14 @@ class FileManagerFragment(private val activity: Activity) : Screen {
             d.setCornerRadius(D.dp(context, 6f).toFloat())
             if (on) {
                 d.setColor(ThemeColors.accentStart(context))
+                // The stroke is what keeps the mark visible on a photo of its own colour: the
+                // seeded sunrise picture is the same yellow as the accent, and the tick vanished
+                // into it.
+                d.setStroke(D.dp(context, 1.5f), 0x73000000)
             } else {
-                // A dark well with a light edge: readable on a bright photo and on a card.
-                d.setColor(0x66000000)
-                d.setStroke(D.dp(context, 1.5f), 0xCCFFFFFF.toInt())
+                // A dark well, so it reads on a white photo, with a light rim for dark ones.
+                d.setColor(0x73000000)
+                d.setStroke(D.dp(context, 1.5f), 0xD9FFFFFF.toInt())
             }
             background = d
             glyph.visibility = if (on) View.VISIBLE else View.GONE
