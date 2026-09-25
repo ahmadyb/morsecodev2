@@ -151,8 +151,14 @@ jobs:
           python3 tools/offline_build.py 2>&1 | tee /tmp/offline.log
           OFF=${PIPESTATUS[0]}
           if [ "$OFF" -ne 0 ]; then
-            tail -60 /tmp/offline.log | while IFS= read -r line; do
-              [ -n "$line" ] && echo "::error title=offline-build::${line:0:800}"
+            # Annotations are kept from the START of what a step prints, so emitting the tail
+            # would spend them on the stages that went fine. Errors first, context second.
+            grep -nE '(^|[[:space:]])(error|Error|ERROR):|error:|FAILURE-|Exception|Caused by|Unresolved|cannot find symbol' \
+              /tmp/offline.log | head -12 | while IFS= read -r line; do
+              echo "::error title=offline-build::${line:0:800}"
+            done
+            tail -5 /tmp/offline.log | while IFS= read -r line; do
+              [ -n "$line" ] && echo "::error title=offline-build-tail::${line:0:800}"
             done
             exit 1
           fi
@@ -273,8 +279,14 @@ jobs:
           python3 tools/offline_build.py 2>&1 | tee /tmp/offline.log
           STATUS=${PIPESTATUS[0]}
           if [ "$STATUS" -ne 0 ]; then
-            tail -60 /tmp/offline.log | while IFS= read -r line; do
-              [ -n "$line" ] && echo "::error title=offline-build::${line:0:800}"
+            # Annotations are kept from the START of what a step prints, so emitting the tail
+            # would spend them on the stages that went fine. Errors first, context second.
+            grep -nE '(^|[[:space:]])(error|Error|ERROR):|error:|FAILURE-|Exception|Caused by|Unresolved|cannot find symbol' \
+              /tmp/offline.log | head -12 | while IFS= read -r line; do
+              echo "::error title=offline-build::${line:0:800}"
+            done
+            tail -5 /tmp/offline.log | while IFS= read -r line; do
+              [ -n "$line" ] && echo "::error title=offline-build-tail::${line:0:800}"
             done
           fi
           exit "$STATUS"
