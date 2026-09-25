@@ -119,7 +119,9 @@ class LogViewerFragment(private val activity: Activity) : Screen, ResultAware {
         }
     }
 
-    private fun refresh() {
+    /** Also the Screen contract: MainActivity redraws the visible screen when something outside
+     *  it changed (a permission, a radio, an export result). */
+    override fun refresh() {
         if (!::list.isInitialized) return
         val ctx = activity
         list.removeAllViews()
