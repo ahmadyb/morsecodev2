@@ -16,6 +16,7 @@ import com.morsecode.app.core.transfer.SessionPhase
 import com.morsecode.app.core.transfer.TransferEngine
 import com.morsecode.app.core.ui.RadarView
 import com.morsecode.app.core.ui.Screen
+import com.morsecode.app.core.ui.TransportBanner
 import com.morsecode.app.core.ui.detach
 import com.morsecode.app.core.ui.Ui
 import com.morsecode.app.core.ui.W
@@ -88,6 +89,7 @@ class ConnectFragment(
         if (!::body.isInitialized) return
         body.removeAllViews()
         body.addView(header())
+        body.addView(transportRow())
         body.addView(radarBlock())
         body.addView(primaryButtons())
         body.addView(webShareCard())
@@ -130,6 +132,53 @@ class ConnectFragment(
         col.addView(W.label(ctx, sub, 12f, ThemeColors.text2(ctx), mono = true, gravity = Gravity.CENTER))
         return col
     }
+
+    /**
+     * Whichever transport is selected, on the screen and one tap away.
+     *
+     * Switching transports used to hide two taps deep in the help menu, so a phone could sit on
+     * "Nearby" without the user ever having chosen it (the choice is remembered), and there was
+     * no way to see, let alone fix, a Bluetooth radio that was off.
+     */
+    private fun transportRow(): View {
+        val ctx = activity
+        val col = W.column(ctx)
+        val row = W.row(ctx)
+        row.addView(W.label(ctx, ctx.getString(R.string.label_transport), 11f,
+            ThemeColors.muted(ctx), bold = true, mono = true))
+        row.addView(W.spacer(ctx))
+        var first = true
+        for (kind in listOf(TransportKind.LAN, TransportKind.NEARBY)) {
+            if (!first) row.addView(W.hgap(ctx, 6))
+            first = false
+            val active = engine.transportKind.value == kind
+            val pill = W.pill(ctx, TransportKind.label(kind), ThemeColors.accentStart(ctx),
+                filled = active, sizeSp = 12f)
+            pill.pad(12, 7, 12, 7)
+            pill.isClickable = true
+            pill.onClick {
+                if (!active) {
+                    engine.setTransport(kind)
+                    rebuild()
+                }
+            }
+            row.addView(pill)
+        }
+        col.addView(row)
+
+        val token = engine.nearbyProblem()
+        if (token != null) {
+            col.addView(W.gap(ctx, 10))
+            col.addView(TransportBanner.build(activity, token) {
+                engine.setTransport(TransportKind.LAN)
+                rebuild()
+            })
+        }
+        col.addView(W.gap(ctx, 12))
+        return col
+    }
+
+    override fun refresh() = rebuild()
 
     private fun primaryButtons(): View {
         val ctx = activity

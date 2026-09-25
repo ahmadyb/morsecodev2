@@ -371,6 +371,41 @@ for i in 0 1 2 3; do
   shot "tab-$((i + 1))-${TABS[$i]}"
   check "process alive on the ${TABS[$i]} tab" app_alive
 
+  if [ "${TABS[$i]}" = "connect" ]; then
+    # The transport is a choice the user makes, so it must be on the screen (it used to be two
+    # taps into a menu, and whichever one was chosen is remembered across launches). Selecting
+    # Nearby on a phone without Bluetooth must say so: the emulator has no adapter, so this is
+    # the "no adapter" branch - on a real phone with the radio off it is the "Bluetooth is off"
+    # one. Either way the user gets a sentence and a button, not an empty list.
+    NEARBY_PILL=$(label_bounds_clickable "Nearby" || true)
+    if [ -n "$NEARBY_PILL" ]; then
+      ok "the Connect screen offers the transport choice"
+      tap_bounds "$NEARBY_PILL"
+      sleep 3
+      CTEXT=$(dump_texts)
+      case "$CTEXT" in
+        *Bluetooth*)
+          ok "choosing Nearby explains the Bluetooth state" ;;
+        *)
+          bad "choosing Nearby says nothing about Bluetooth - screen says: ${CTEXT:0:380}" ;;
+      esac
+      shot connect-nearby
+      # and switching back must land on the Wi-Fi search again
+      LAN_PILL=$(label_bounds_clickable "Wi-Fi LAN" || true)
+      [ -n "$LAN_PILL" ] || LAN_PILL=$(label_bounds_clickable "Wi-Fi" || true)
+      tap_bounds "$LAN_PILL"
+      sleep 3
+      if screen_shows_ci "Wi-Fi"; then
+        ok "switching back to Wi-Fi LAN works"
+      else
+        bad "switching back to Wi-Fi LAN did not take: $(dump_texts | head -c 300)"
+      fi
+    else
+      bad "the Connect screen has no transport control"
+      ann "Connect screen text: $(dump_texts | head -c 400)"
+    fi
+  fi
+
   if [ "${TABS[$i]}" = "files" ]; then
     # Regression guard: permissions were granted at install time with `adb install -g`, so the
     # Files tab must not claim it needs storage permission. It used to, because the gate asked for

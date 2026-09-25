@@ -42,6 +42,7 @@ class LanTransport(
     override val kind: String = com.morsecode.app.core.model.TransportKind.LAN
 
     @Volatile private var running = false
+    override val isRunning: Boolean get() = running
     private var beacon: Thread? = null
     private var server: ServerSocket? = null
     private var udp: DatagramSocket? = null

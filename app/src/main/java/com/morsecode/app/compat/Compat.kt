@@ -322,14 +322,47 @@ object Compat {
         }
     }
 
+    /** Request code for the system's "turn Bluetooth on" dialog. */
+    const val REQ_BLUETOOTH = 7913
+
+    /** Request code for the system's "make this phone discoverable" dialog. */
+    const val REQ_DISCOVERABLE = 7914
+
     fun requestBluetooth(activity: Activity) {
         try {
             val a = android.bluetooth.BluetoothAdapter.getDefaultAdapter()
             if (a != null && !a.isEnabled) {
                 activity.startActivityForResult(
-                    Intent(android.bluetooth.BluetoothAdapter.ACTION_REQUEST_ENABLE), 4242
+                    Intent(android.bluetooth.BluetoothAdapter.ACTION_REQUEST_ENABLE), REQ_BLUETOOTH
                 )
             }
+        } catch (t: Throwable) {
+        }
+    }
+
+    /** True while this phone answers a classic Bluetooth inquiry. */
+    fun isDiscoverable(): Boolean = try {
+        val a = android.bluetooth.BluetoothAdapter.getDefaultAdapter()
+        a != null && a.isEnabled &&
+            a.scanMode == android.bluetooth.BluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE
+    } catch (t: Throwable) {
+        false
+    }
+
+    /**
+     * Ask the system to make this phone discoverable, which is what classic Bluetooth inquiry
+     * needs. A device with an open RFCOMM server socket is *not* discoverable: without this, a
+     * phone waiting to receive is invisible and the sender searches an empty list forever.
+     * Android shows its own dialog and caps the window at 300 seconds.
+     */
+    fun requestDiscoverable(activity: Activity, seconds: Int = 300) {
+        try {
+            val a = android.bluetooth.BluetoothAdapter.getDefaultAdapter()
+            if (a == null || !a.isEnabled) return
+            if (isDiscoverable()) return
+            val i = Intent(android.bluetooth.BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE)
+            i.putExtra(android.bluetooth.BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, seconds)
+            activity.startActivityForResult(i, REQ_DISCOVERABLE)
         } catch (t: Throwable) {
         }
     }

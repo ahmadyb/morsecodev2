@@ -25,16 +25,36 @@ object Permissions {
     const val REQ_NOTIFICATIONS = 9103
     const val REQ_CAMERA = 9104
 
+    /**
+     * The Bluetooth grants that apply at this API level.
+     *
+     * These are two different permission models, not two names for the same thing. Android 12
+     * replaced BLUETOOTH/BLUETOOTH_ADMIN with the runtime BLUETOOTH_SCAN/ADVERTISE/CONNECT trio,
+     * and this app's manifest caps the two legacy ones at API 30 - on a modern phone they are not
+     * installed at all, so asking the system whether BLUETOOTH is granted answers "denied" on a
+     * device where Bluetooth works perfectly. That is the answer the Nearby transport used to act
+     * on: it refused to start on every Android 12+ phone, and the receiving device never appeared
+     * in the sender's list.
+     */
+    fun bluetooth(ctx: Context): List<String> =
+        if (Compat.isApi31) listOf(
+            Manifest.permission.BLUETOOTH_SCAN,
+            Manifest.permission.BLUETOOTH_ADVERTISE,
+            Manifest.permission.BLUETOOTH_CONNECT
+        ) else listOf(
+            Manifest.permission.BLUETOOTH,
+            Manifest.permission.BLUETOOTH_ADMIN
+        )
+
+    fun bluetoothGranted(ctx: Context): Boolean = granted(ctx, bluetooth(ctx))
+
     /** Permissions the Nearby transport needs on this API level. */
     fun nearby(ctx: Context): List<String> {
-        val out = ArrayList<String>()
-        if (Compat.isApi31) {
-            out.add(Manifest.permission.BLUETOOTH_SCAN)
-            out.add(Manifest.permission.BLUETOOTH_ADVERTISE)
-            out.add(Manifest.permission.BLUETOOTH_CONNECT)
-        } else {
-            out.add(Manifest.permission.ACCESS_FINE_LOCATION)
-        }
+        val out = ArrayList(bluetooth(ctx))
+        // Below Android 12 a discovery result carries location-adjacent information, so the
+        // platform makes it a location permission. From 12 the Bluetooth trio replaces it (our
+        // scan declaration carries neverForLocation).
+        if (!Compat.isApi31) out.add(Manifest.permission.ACCESS_FINE_LOCATION)
         if (Compat.isApi33) out.add("android.permission.NEARBY_WIFI_DEVICES")
         return out
     }

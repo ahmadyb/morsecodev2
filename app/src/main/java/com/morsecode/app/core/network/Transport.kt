@@ -67,6 +67,14 @@ interface Transport {
     fun start()
     fun stop()
 
+    /**
+     * Whether [start] actually brought this transport up. A transport refuses to start for
+     * ordinary reasons (radio off, permission missing, no adapter), and the caller has to be
+     * able to tell "started" apart from "asked to start" - otherwise the UI shows a search
+     * that is not happening.
+     */
+    val isRunning: Boolean
+
     fun connect(peer: DiscoveredPeer, host: SessionHost): TransportSession?
 
     fun beacon(): String

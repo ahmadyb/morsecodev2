@@ -11,6 +11,13 @@ interface Screen {
     fun view(ctx: Activity): View
     fun onShown() {}
     fun onHidden() {}
+
+    /**
+     * Something outside the screen changed the state it renders (a radio came on, a permission
+     * was granted) and the screen should redraw. Cheap by contract: it must not re-register
+     * observers.
+     */
+    fun refresh() {}
     /** Return true when the screen consumed the back press. */
     fun onBackPressed(): Boolean = false
 }

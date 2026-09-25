@@ -295,6 +295,15 @@
     <string name="doc_multicast">Multicast lock</string>
     <string name="doc_multicast_ok">Held - beacon every 1200 ms</string>
     <string name="doc_multicast_bad">Not held - discovery will be slow</string>
+    <string name="doc_nearby_ready">Nearby (Bluetooth) transport</string>
+    <string name="doc_nearby_ready_ok">ready - adapter present, radio on, permissions granted</string>
+    <string name="doc_nearby_ready_bad">not ready: %1$s</string>
+    <string name="doc_nearby_ready_fix">Nearby is the transport with no shared network. Wi-Fi LAN needs both phones on one router or hotspot.</string>
+    <string name="doc_nearby_discoverable">Discoverable to nearby searches</string>
+    <string name="doc_nearby_discoverable_ok">yes - this phone answers a Bluetooth inquiry right now</string>
+    <string name="doc_nearby_discoverable_idle">not right now - a phone that is only listening is invisible to a sender until it is discoverable</string>
+    <string name="doc_nearby_discoverable_bad">Bluetooth is off</string>
+    <string name="doc_nearby_discoverable_fix">On the receiving phone open Send / Receive › Receive and keep that screen up: it asks the system to make the phone discoverable for five minutes at a time.</string>
     <string name="doc_play_services">Bluetooth radio</string>
     <string name="doc_play_ok">Available for Nearby transfers</string>
     <string name="doc_play_old">Off or unsupported \u2014 Nearby transfers may be slower</string>
@@ -372,6 +381,13 @@
     <!--  files / history extras  -->
     <string name="link_needed_title">No connection yet</string>
     <string name="link_needed_body">MorseCode moves files over Wi-Fi or Bluetooth. Turn one on and both phones will find each other - nothing else is required, and there is no internet involved.</string>
+    <string name="bt_no_adapter">This device has no Bluetooth, so Nearby cannot work here. Wi-Fi works with no router and no data.</string>
+    <string name="bt_off">Bluetooth is off, so nearby phones cannot be found. Turn it on, or use Wi-Fi.</string>
+    <string name="bt_needs_permission">Nearby needs the Bluetooth permissions - without them this phone can neither be seen nor see.</string>
+    <string name="allow">Allow</string>
+    <string name="use_lan">Use Wi-Fi instead</string>
+    <string name="nearby_receiver_hint">Keep this screen open: this phone is visible to nearby searches for five minutes at a time.</string>
+    <string name="nearby_sender_hint">The other phone has to be on its Receive screen - a phone is only findable while it is waiting to receive.</string>
     <string name="turn_on_wifi">Turn on Wi-Fi</string>
     <string name="turn_on_bluetooth">Bluetooth</string>
     <string name="send">Send</string>

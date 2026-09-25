@@ -159,6 +159,12 @@ class MainActivity : Activity() {
 
     private var shown: Screen? = null
 
+    /** Redraw whatever is on screen after something outside it changed the state it renders. */
+    private fun refreshScreens() {
+        try { shown?.refresh() } catch (t: Throwable) {}
+        try { pushed?.refresh() } catch (t: Throwable) {}
+    }
+
     private fun show(screen: Screen) {
         if (shown === screen) return
         shown?.onHidden()
@@ -297,6 +303,11 @@ class MainActivity : Activity() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         val ok = Permissions.grantedResult(grantResults)
         Log.info("Permission result code=$requestCode granted=$ok")
+        if (requestCode == Permissions.REQ_NEARBY) {
+            // Granting the nearby permissions is what the Nearby transport was waiting for.
+            Di.engine(this).onBluetoothEnabled()
+            refreshScreens()
+        }
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -333,6 +344,16 @@ class MainActivity : Activity() {
                 }
                 val aware = (pushed as? ResultAware) ?: (shown as? ResultAware)
                 aware?.onActivityResultHandled(requestCode, resultCode)
+            }
+            Compat.REQ_BLUETOOTH -> {
+                // The user was asked to switch Bluetooth on because a transport needed it.
+                Log.info("Bluetooth request returned: result=$resultCode")
+                Di.engine(this).onBluetoothEnabled()
+                refreshScreens()
+            }
+            Compat.REQ_DISCOVERABLE -> {
+                Log.info("Discoverable request returned: result=$resultCode, discoverable=${Compat.isDiscoverable()}")
+                refreshScreens()
             }
             else -> {
                 val aware = (pushed as? ResultAware) ?: (shown as? ResultAware)

@@ -5,6 +5,7 @@ import android.view.Gravity
 import android.view.View
 import android.widget.LinearLayout
 import com.morsecode.app.R
+import com.morsecode.app.core.ui.TransportBanner
 import com.morsecode.app.core.ui.W
 import com.morsecode.app.core.ui.onClick
 import com.morsecode.app.core.ui.pad
@@ -56,6 +57,33 @@ object ConnectionDoctor {
             if (bt) Check(0, activity.getString(R.string.doc_play_services), activity.getString(R.string.doc_play_ok))
             else Check(1, activity.getString(R.string.doc_play_services), activity.getString(R.string.doc_play_old),
                 "Turn Bluetooth on to transfer without a shared network.")
+        )
+        // The Nearby path on the receiving side specifically: an adapter, the radio on, the
+        // Bluetooth grants of this API level, and - the one that is easy to miss - the phone
+        // being discoverable. Classic inquiry reports nothing else, so a receiving phone that is
+        // not discoverable is invisible however long the sender searches.
+        val problem = Di.engine(activity).nearbyProblem()
+        val btOn = try {
+            android.bluetooth.BluetoothAdapter.getDefaultAdapter()?.isEnabled == true
+        } catch (t: Throwable) {
+            false
+        }
+        out.add(
+            if (problem == null) Check(0, activity.getString(R.string.doc_nearby_ready),
+                activity.getString(R.string.doc_nearby_ready_ok))
+            else Check(2, activity.getString(R.string.doc_nearby_ready),
+                activity.getString(R.string.doc_nearby_ready_bad, TransportBanner.text(activity, problem)),
+                activity.getString(R.string.doc_nearby_ready_fix))
+        )
+        out.add(
+            if (!btOn) Check(2, activity.getString(R.string.doc_nearby_discoverable),
+                activity.getString(R.string.doc_nearby_discoverable_bad),
+                activity.getString(R.string.doc_nearby_discoverable_fix))
+            else if (Compat.isDiscoverable()) Check(0, activity.getString(R.string.doc_nearby_discoverable),
+                activity.getString(R.string.doc_nearby_discoverable_ok))
+            else Check(1, activity.getString(R.string.doc_nearby_discoverable),
+                activity.getString(R.string.doc_nearby_discoverable_idle),
+                activity.getString(R.string.doc_nearby_discoverable_fix))
         )
         val permsOk = Permissions.granted(activity, Permissions.nearby(activity)) && Permissions.summary(activity).contains("Storage").not()
         out.add(

@@ -25,6 +25,8 @@ import com.morsecode.app.core.transfer.TransferEngine
 import com.morsecode.app.core.ui.ProgressView
 import com.morsecode.app.core.ui.RadarView
 import com.morsecode.app.core.ui.Screen
+import com.morsecode.app.core.util.Compat
+import com.morsecode.app.core.ui.TransportBanner
 import com.morsecode.app.core.ui.detach
 import com.morsecode.app.core.ui.Ui
 import com.morsecode.app.core.ui.W
@@ -113,7 +115,10 @@ class TransferFragment(
         engine.events.observe(eventObserver)
 
         when (mode) {
-            Mode.LISTEN -> engine.startListening()
+            Mode.LISTEN -> {
+                engine.startListening()
+                askDiscoverable()
+            }
             Mode.BROADCAST -> Unit
             else -> engine.startDiscovery()
         }
@@ -130,6 +135,7 @@ class TransferFragment(
         engine.phase.unobserve(phaseObserver)
         engine.transportKind.unobserve(transportObserver)
         engine.events.unobserve(eventObserver)
+        handler.removeCallbacks(discoverableTick)
         // Minimising never ends a session - it keeps running in the foreground service.
         Log.info("Transfer screen minimised - sessions continue in the background")
     }
@@ -258,6 +264,14 @@ class TransferFragment(
         head.setGravity(Gravity.CENTER)
         head.addView(W.label(ctx, ctx.getString(R.string.searching_for_devices), 17f, ThemeColors.text(ctx), bold = true, gravity = Gravity.CENTER))
         head.addView(W.label(ctx, ctx.getString(R.string.searching_sub), 12.5f, ThemeColors.text2(ctx), gravity = Gravity.CENTER))
+        // One sentence about the side of the transfer this screen is not showing: the receiver
+        // has to be waiting (and discoverable) for the sender to see it at all.
+        if (engine.transportKind.value == TransportKind.NEARBY) {
+            head.addView(W.gap(ctx, 6))
+            head.addView(W.label(ctx,
+                ctx.getString(if (mode == Mode.LISTEN) R.string.nearby_receiver_hint else R.string.nearby_sender_hint),
+                12f, ThemeColors.text2(ctx), gravity = Gravity.CENTER))
+        }
         col.addView(head)
         col.addView(W.gap(ctx, 16))
 
@@ -266,6 +280,15 @@ class TransferFragment(
             TransportKind.label(engine.transportKind.value)))
         col.addView(transportCard)
         col.addView(W.gap(ctx, 8))
+
+        val problem = engine.nearbyProblem()
+        if (problem != null) {
+            col.addView(TransportBanner.build(activity, problem) {
+                engine.setTransport(TransportKind.LAN)
+                rebuild()
+            })
+            col.addView(W.gap(ctx, 8))
+        }
 
         val queueCard = W.card(ctx)
         val queue = engine.items.value.filter { !it.isTerminal }
@@ -939,6 +962,35 @@ class TransferFragment(
         }
         sheet.show()
     }
+
+    // ------------------------------------------------------- being findable
+
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    /**
+     * Classic Bluetooth inquiry only reports phones that are discoverable, and an open RFCOMM
+     * server socket does not make a phone discoverable. The receiving side therefore has to ask,
+     * or the sender searches forever and the receiving device never appears.
+     *
+     * Android caps the window at 300 s, so the request is repeated while the screen is up
+     * (a request made while already discoverable is a no-op and shows no dialog).
+     */
+    private fun askDiscoverable() {
+        if (mode != Mode.LISTEN) return
+        if (engine.transportKind.value != TransportKind.NEARBY) return
+        if (engine.nearbyProblem() != null) return
+        val already = Compat.isDiscoverable()
+        Compat.requestDiscoverable(activity, 300)
+        if (!already) Log.info("Asking the system to make this phone discoverable for 5 minutes")
+        handler.removeCallbacks(discoverableTick)
+        handler.postDelayed(discoverableTick, 240_000)
+    }
+
+    private val discoverableTick = object : Runnable {
+        override fun run() = askDiscoverable()
+    }
+
+    override fun refresh() = rebuild()
 
     private fun showOverflow() {
         val ctx = activity

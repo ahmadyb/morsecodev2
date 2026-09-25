@@ -17,6 +17,7 @@ import com.morsecode.app.core.storage.Destinations
 import com.morsecode.app.core.transfer.Log
 import com.morsecode.app.core.util.Compat
 import com.morsecode.app.core.util.Paths
+import com.morsecode.app.core.util.Permissions
 import com.morsecode.app.core.util.Workers
 import org.json.JSONObject
 import java.io.InputStream
@@ -54,6 +55,7 @@ class NearbyTransport(
     private val serviceName = "MorseCode"
 
     @Volatile private var running = false
+    override val isRunning: Boolean get() = running
     private var acceptThread: Thread? = null
     private var serverSocket: BluetoothServerSocket? = null
     private var receiver: BroadcastReceiver? = null
@@ -69,7 +71,19 @@ class NearbyTransport(
         null
     }
 
-    fun available(): Boolean = adapter()?.isEnabled == true
+    fun available(): Boolean = problem() == null
+
+    /**
+     * Why this transport cannot run, as a token the screen turns into a sentence, or null when
+     * it can. The tokens are stable on purpose: the UI owns the wording.
+     */
+    fun problem(): String? {
+        val ad = adapter()
+        if (ad == null) return "no_adapter"
+        if (!ad.isEnabled) return "off"
+        if (!Permissions.bluetoothGranted(ctx)) return "permission"
+        return null
+    }
 
     // ---------------------------------------------------------------- lifecycle
 
@@ -80,14 +94,17 @@ class NearbyTransport(
             Log.warn("Bluetooth is off - Nearby transport unavailable")
             return
         }
-        if (!Compat.checkSelf(ctx, android.Manifest.permission.BLUETOOTH)) {
-            Log.warn("Bluetooth permission missing")
+        // Not `checkSelf(ctx, BLUETOOTH)`: the manifest caps that permission at API 30, so on
+        // Android 12+ the check answers "denied" and this transport refused to start on every
+        // modern phone - which is why the receiving device never showed up in the sender's list.
+        if (!Permissions.bluetoothGranted(ctx)) {
+            Log.warn("Nearby (Bluetooth) permission missing - the nearby permissions are not granted")
             return
         }
         running = true
         startServer(ad)
         startDiscovery(ad)
-        Log.info("Nearby (Bluetooth) transport started as $deviceName")
+        Log.info("Nearby (Bluetooth) transport started as $deviceName (discoverable=${Compat.isDiscoverable()})")
     }
 
     override fun stop() {

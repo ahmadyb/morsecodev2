@@ -144,7 +144,7 @@ class TransferEngine(private val ctx: Context) : SessionHost {
     fun isLanActive(): Boolean = transportKind.value == TransportKind.LAN
 
     fun startDiscovery() {
-        ensureLan().start()
+        startSelected()
         searching = true
         if (phase.value == SessionPhase.IDLE || phase.value == SessionPhase.BATCH_DONE) {
             phase.set(SessionPhase.SEARCHING_SEND)
@@ -153,22 +153,61 @@ class TransferEngine(private val ctx: Context) : SessionHost {
     }
 
     fun startListening() {
-        ensureLan().start()
+        startSelected()
         searching = true
         phase.set(SessionPhase.SEARCHING_RECEIVE)
         Log.info("Listening for senders on :${BuildConfig.TCP_PORT}")
     }
 
-    fun switchTransport() {
-        val next = if (transportKind.value == TransportKind.LAN) TransportKind.NEARBY else TransportKind.LAN
-        transportKind.set(next)
-        Di.prefs(ctx).lastTransport = next
-        if (next == TransportKind.NEARBY) {
-            ensureNearby().start()
-            Log.info("Transport switched to Nearby (Bluetooth)")
-        } else {
+    /**
+     * Start the transport the user selected - not always the LAN one.
+     *
+     * These two entry points used to call `ensureLan().start()` unconditionally, so a phone whose
+     * selected transport was Nearby started a Wi-Fi search and never touched Bluetooth: the
+     * sender saw "Nearby" on screen and an empty list, and nothing was listening on the receiver.
+     */
+    private fun startSelected() {
+        val t = currentTransport()
+        t.start()
+        if (t.isRunning) return
+        if (transportKind.value == TransportKind.NEARBY) {
+            Log.warn("Nearby (Bluetooth) did not start (${nearbyProblem() ?: "unknown"}) - Wi-Fi LAN is carrying the session")
             ensureLan().start()
-            Log.info("Transport switched to Wi-Fi LAN")
+        }
+    }
+
+    /**
+     * Why the Nearby transport cannot run right now, or null when it can - or when it is not the
+     * selected transport, in which case the question does not apply. The Connect and Transfer
+     * screens turn the token into a sentence and offer the fix.
+     */
+    fun nearbyProblem(): String? =
+        if (transportKind.value == TransportKind.NEARBY) ensureNearby().problem() else null
+
+    fun setTransport(kind: String) {
+        if (kind == transportKind.value) return
+        transportKind.set(kind)
+        Di.prefs(ctx).lastTransport = kind
+        // Peers belong to the transport that found them; a Wi-Fi peer must not linger in the
+        // list for two minutes after the user switched to Bluetooth and look like a nearby one.
+        peers.set(emptyList())
+        val t = currentTransport()
+        t.start()
+        Log.info("Transport switched to ${TransportKind.label(kind)} (running=${t.isRunning})")
+        if (!t.isRunning && kind == TransportKind.NEARBY) {
+            Log.warn("Nearby (Bluetooth) could not start: ${ensureNearby().problem() ?: "unknown"}")
+        }
+    }
+
+    fun switchTransport() = setTransport(
+        if (transportKind.value == TransportKind.LAN) TransportKind.NEARBY else TransportKind.LAN
+    )
+
+    /** The Bluetooth side came up after the user was asked to turn it on. */
+    fun onBluetoothEnabled() {
+        if (transportKind.value == TransportKind.NEARBY) {
+            Log.info("Bluetooth is on - starting the Nearby transport")
+            startDiscovery()
         }
     }
 

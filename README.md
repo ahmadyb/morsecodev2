@@ -105,13 +105,39 @@ adb install -r MorseCode-1.0.4-release.apk         # phones
 > Photos on a phone with a few thousand pictures took seconds. v1.0.3 caches the query windows and
 > pages the grid, and CI now asserts that a day header says the day once.
 >
-> **v1.0.4 is the bug batch from using 1.0.3 on a phone.** WebShare refused a PC hotspot with no
+> **v1.0.4 is the bug batch from using 1.0.3 on a phone.** It also fixes Nearby discovery: the
+> transport refused to start on Android 12+ because it looked for a permission the manifest caps
+> at API 30, the Connect and Receive screens only ever started the Wi-Fi transport unless the
+> transport had been switched by hand, and nothing asked the receiving phone to be discoverable -
+> without which classic inquiry cannot see it at all. WebShare refused a PC hotspot with no
 > internet because it asked which network had the default route instead of whether a link existed;
 > selection bars were appended to the scrolling content, so on a long day "Select all" showed no
 > Send; "Select all" could only add; Documents was a bucket filter that renamed files; crashes and
 > logs lived in a ring buffer that died with the process; the transfer notification had no stop;
 > and Send/Receive refused without offering to turn the radios on. All of that is fixed and driven
 > by the emulator gate, which now walks the Files hub and the selection bar too.
+
+### Nearby (Bluetooth) — why a phone has to be in Receive to be found
+
+The Nearby transport is Bluetooth RFCOMM with its own discovery, because the offline toolchain
+cannot resolve Google Play Services (see `NearbyTransport.kt`). That has one consequence the LAN
+transport does not have, and it is the thing that made "the other device never appears":
+
+* **Classic Bluetooth inquiry only reports discoverable devices, and an open server socket does
+  not make a phone discoverable.** So the receiving phone asks the system to make it discoverable
+  (`ACTION_REQUEST_DISCOVERABLE`, five minutes at a time, repeated while the Receive screen is
+  open) and says so on screen. A phone sitting on its Receive screen is findable; a phone that has
+  merely granted permissions and gone back to the home screen is not.
+* **The permissions are not the same permissions below and above Android 12.** BLUETOOTH and
+  BLUETOOTH_ADMIN are capped at API 30 in the manifest, so on Android 12+ they are not installed
+  and `checkSelfPermission` answers "denied" on a phone where Bluetooth works. The transport
+  checks BLUETOOTH_SCAN/ADVERTISE/CONNECT there instead. Until v1.0.4 it checked the legacy pair
+  everywhere, refused to start, and logged one line - which is why a sender in Nearby mode
+  searched an empty list on every modern phone.
+* **Both phones have to be on the same transport.** The choice is on the Connect screen (it used
+  to be two taps into the help menu) and is remembered. If Nearby cannot run at all, the screen
+  says which of the three things is missing - no adapter, radio off, permissions - and offers the
+  button that fixes it. Connection Doctor has the same two rows.
 
 ### 3. CI — builds and publishes the release
 
