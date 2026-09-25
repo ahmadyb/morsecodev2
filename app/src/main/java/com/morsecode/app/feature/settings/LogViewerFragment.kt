@@ -30,6 +30,7 @@ class LogViewerFragment(private val activity: Activity) : Screen {
 
     private var errorsOnly = false
     private var filter = ""
+    private var pendingExport: String? = null
     private lateinit var list: LinearLayout
     private lateinit var host: com.morsecode.app.MainActivity
 
@@ -76,13 +77,20 @@ class LogViewerFragment(private val activity: Activity) : Screen {
         find.onClick { askFilter() }
         row.addView(find)
         row.addView(W.hgap(ctx, 6))
+        // Copy and export are separate buttons because they answer different questions: "paste the
+        // last few lines into a chat" and "send me the whole file".
+        val copy = W.iconButton(ctx, R.drawable.ic_copy, 34)
+        copy.onClick { copyToClipboard() }
+        row.addView(copy)
+        row.addView(W.hgap(ctx, 6))
         val export = W.iconButton(ctx, R.drawable.ic_download, 34)
         export.onClick { export() }
         row.addView(export)
         row.addView(W.hgap(ctx, 6))
         val clear = W.iconButton(ctx, R.drawable.ic_trash, 34)
         clear.onClick {
-            Ui.confirm(activity, ctx.getString(R.string.clear_log), "Every in-memory line is removed.",
+            Ui.confirm(activity, ctx.getString(R.string.clear_log),
+                "This removes the stored log and every crash report. Until you do, the log survives closing the app.",
                 positive = ctx.getString(R.string.clear),
                 onPositive = {
                     Di.logs(activity).clear()
@@ -149,23 +157,85 @@ class LogViewerFragment(private val activity: Activity) : Screen {
         list.addView(W.gap(ctx, 20))
     }
 
+    /** The filtered view lands on the clipboard - the quickest way to paste a bug into a message. */
+    private fun copyToClipboard() {
+        val ctx = activity
+        val text = exportText()
+        try {
+            Compat.copy(ctx, "MorseCode log", text)
+            Ui.toast(ctx, ctx.getString(R.string.copied))
+        } catch (t: Throwable) {
+            Compat.shareText(ctx, ctx.getString(R.string.log_viewer), text)
+        }
+    }
+
+    private fun exportText(): String {
+        val lines = Di.logs(activity).snapshot().filter { line ->
+            (!errorsOnly || line.level != LogStore.Level.INFO) &&
+                (filter.isBlank() || line.message.contains(filter, ignoreCase = true))
+        }
+        // The header names the version and the device, so a pasted log is self-describing.
+        val sb = StringBuilder(Di.logs(activity).exportText().substringBefore("=".repeat(64)))
+        for (line in lines) sb.append(line.render()).append('\n')
+        val crashes = Di.logs(activity).crashes()
+        if (crashes.isNotBlank()) sb.append('\n').append(crashes)
+        return sb.toString()
+    }
+
+    /**
+     * Saves the log as a .txt.
+     *
+     * Writing straight into Download/ needs all-files access on Android 11+, which a user who only
+     * granted the media permissions does not have - the export then failed silently and looked like
+     * "there is no export". The system file picker works for everyone, so it is the first choice;
+     * the share sheet is the last resort.
+     */
     private fun export() {
         val ctx = activity
-        val text = Di.logs(ctx).exportText()
-        val file = java.io.File(com.morsecode.app.core.storage.Destinations.downloadRoot(ctx), "morsecode-log-${System.currentTimeMillis() / 1000}.txt")
+        val text = exportText()
+        val name = "morsecode-log-${System.currentTimeMillis() / 1000}.txt"
+        try {
+            val intent = Intent(Intent.ACTION_CREATE_DOCUMENT)
+                .addCategory(Intent.CATEGORY_OPENABLE)
+                .setType("text/plain")
+                .putExtra(Intent.EXTRA_TITLE, name)
+            activity.startActivityForResult(intent, REQ_EXPORT)
+            pendingExport = text
+            return
+        } catch (t: Throwable) {
+        }
+        fallbackExport(text, name)
+    }
+
+    private fun fallbackExport(text: String, name: String) {
+        val ctx = activity
+        val file = java.io.File(com.morsecode.app.core.storage.Destinations.downloadRoot(ctx), name)
         try {
             file.parentFile?.mkdirs()
             file.writeText(text)
             Ui.info(activity, ctx.getString(R.string.export_txt), ctx.getString(R.string.exported_to, file.absolutePath))
         } catch (t: Throwable) {
             try {
-                val intent = Intent(Intent.ACTION_SEND)
-                intent.type = "text/plain"
-                intent.putExtra(Intent.EXTRA_TEXT, text)
-                activity.startActivity(Intent.createChooser(intent, ctx.getString(R.string.export_txt)))
+                Compat.shareText(ctx, ctx.getString(R.string.export_txt), text)
             } catch (inner: Throwable) {
                 Ui.info(activity, ctx.getString(R.string.export_txt), ctx.getString(R.string.export_failed, t.message ?: "unknown"))
             }
         }
+    }
+
+    override fun onActivityResultHandled(requestCode: Int, resultCode: Int): Boolean {
+        if (requestCode != REQ_EXPORT) return false
+        val text = pendingExport
+        pendingExport = null
+        if (resultCode != Activity.RESULT_OK || text == null) {
+            Ui.toast(activity, activity.getString(R.string.export_failed, "cancelled"))
+            return true
+        }
+        Ui.toast(activity, activity.getString(R.string.exported))
+        return true
+    }
+
+    companion object {
+        const val REQ_EXPORT = 7911
     }
 }

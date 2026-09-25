@@ -292,6 +292,22 @@ label_bounds() {
     | grep "text=\"$1\"" | grep -o 'bounds="\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]"' | head -1
 }
 
+# The same, but the *highest* match on screen. "Files" is both a pill in the tab strip and a label
+# in the bottom navigation, and only one of them switches the content.
+label_bounds_top() {
+  dump_ui | tr '>' '\n' | grep "text=\"$1\"" \
+    | grep -o 'bounds="\[[0-9]*,[0-9]*\]\[[0-9]*,[0-9]*\]"' \
+    | sed 's/[^0-9]/ /g' | awk '{print $2" "$1" "$4" "$3}' | sort -n | head -1 | awk '{print $2" "$1" "$4" "$3}'
+}
+
+tap_bounds() {
+  local b="$1"
+  [ -n "$b" ] || return 1
+  set -- $(printf '%s' "$b" | grep -o '[0-9]*')
+  [ "$#" -ge 4 ] || return 1
+  adb shell input tap "$(( ($1 + $3) / 2 ))" "$(( ($2 + $4) / 2 ))" >/dev/null 2>&1
+}
+
 # Screen text is the cheapest assertion available on a real device, and it is what a user reads.
 screen_shows() {
   local ui
@@ -359,6 +375,73 @@ for i in 0 1 2 3; do
     fi
     if screen_shows "Apps" && screen_shows "Documents"; then
       ok "all five category tabs are present"
+    fi
+
+    # The day header used to print the day twice ("Yesterday Yesterday 3 items") because the count
+    # label repeated it. If it ever comes back, this says so.
+    if screen_shows "Today Today" || screen_shows "Yesterday Yesterday"; then
+      bad "a day header repeats the day name"
+    else
+      ok "day headers name the day once"
+    fi
+
+    # Select all in a day: the bar that carries Send / share / delete must be on screen (it used to
+    # be appended to the scroll content, i.e. below the fold on any long day) and it must toggle.
+    SELALL=$(label_bounds "Select all" || true)
+    if [ -n "$SELALL" ]; then
+      tap_bounds "$SELALL"
+      sleep 2
+      if screen_shows "selected"; then
+        ok "selecting a day shows the pinned selection bar"
+        if screen_shows "Send"; then
+          ok "the Send button is visible with a selection"
+        else
+          bad "the selection bar has no visible Send button"
+        fi
+        if screen_shows "Clear all"; then
+          ok "Select all becomes Clear all"
+          CLEAR=$(label_bounds "Clear all" || true)
+          tap_bounds "$CLEAR"
+          sleep 2
+          if screen_shows "selected"; then
+            bad "Clear all did not clear the selection"
+          else
+            ok "Clear all clears the day in one tap"
+          fi
+        else
+          bad "Select all does not offer to clear the selection again"
+        fi
+      else
+        bad "tapping Select all did not select anything"
+      fi
+    else
+      bad "no Select all on the Files tab with media present"
+    fi
+    shot files-selection
+
+    # The Files pill is the design's category hub (Documents / Ebooks / Archives / APKs / Large
+    # files, then folders with Download and Internal storage).
+    FILES_PILL=$(label_bounds_top "Files" || true)
+    tap_bounds "$FILES_PILL"
+    sleep 3
+    shot files-hub
+    for LABEL in "Categories" "Documents" "Ebooks" "Archives" "APKs" "Large files" "Folders" "Internal storage"; do
+      if screen_shows "$LABEL"; then
+        ok "the Files hub shows $LABEL"
+      else
+        bad "the Files hub is missing $LABEL"
+      fi
+    done
+
+    # Opening Internal storage must give a real browser with a clickable address bar.
+    INTERNAL=$(label_bounds "Internal storage" || true)
+    tap_bounds "$INTERNAL"
+    sleep 3
+    shot files-browser
+    if screen_shows "Internal storage"; then
+      ok "internal storage opens with a breadcrumb"
+    else
+      bad "internal storage did not open"
     fi
   fi
 done

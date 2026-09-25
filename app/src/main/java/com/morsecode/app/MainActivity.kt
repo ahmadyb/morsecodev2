@@ -28,6 +28,7 @@ import com.morsecode.app.di.Di
 import com.morsecode.app.feature.connect.ConnectFragment
 import com.morsecode.app.feature.filemanager.FileManagerFragment
 import com.morsecode.app.feature.history.HistoryFragment
+import com.morsecode.app.feature.settings.LogViewerFragment
 import com.morsecode.app.feature.settings.SettingsFragment
 import com.morsecode.app.feature.transfer.TransferFragment
 import com.morsecode.app.feature.onboarding.OnboardingActivity
@@ -170,16 +171,54 @@ class MainActivity : Activity() {
 
     /** Push the Transfer / Broadcast screen full screen; the bottom nav stays visible. */
     fun openTransfer(mode: TransferFragment.Mode, title: String? = null) {
+        if (!ensureRadio()) return
         val screen = TransferFragment(this, mode, title)
         pushed = screen
         show(screen)
     }
 
     fun openTransferWith(uris: List<Uri>) {
+        if (!ensureRadio()) return
         val screen = TransferFragment(this, TransferFragment.Mode.SEND_PICKED)
         screen.pendingUris = uris
         pushed = screen
         show(screen)
+    }
+
+    /**
+     * Send and Receive need one radio on: Wi-Fi for the LAN path, Bluetooth for Nearby.
+     *
+     * Tapping either with both off used to open a screen that could only fail - it scanned for
+     * peers on a network that was not there. The radios are the user's to turn on, so the app asks,
+     * offers both switches and explains why; it never silently enables anything.
+     */
+    private fun ensureRadio(): Boolean {
+        if (Compat.isWifiConnected(this) || Compat.isBluetoothEnabled(this)) return true
+        val content = W.column(this, 8, 8)
+        val card = W.card(this, 1, 18f, 16)
+        card.addView(W.label(this, getString(R.string.link_needed_title), 18f, ThemeColors.text(this), bold = true))
+        card.addView(W.gap(this, 8))
+        card.addView(W.label(this, getString(R.string.link_needed_body), 14f, ThemeColors.text(this)))
+        content.addView(card)
+        content.addView(W.gap(this, 10))
+        val row = W.row(this, 4, 4)
+        val wifi = W.accentButton(this, getString(R.string.turn_on_wifi))
+        val bt = W.outlineButton(this, getString(R.string.turn_on_bluetooth))
+        row.addView(wifi, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        row.addView(W.hgap(this, 8))
+        row.addView(bt, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        content.addView(row)
+        val dialog = AlertDialog.Builder(this).setView(content).setCancelable(true).create()
+        wifi.onClick {
+            dialog.dismiss()
+            Compat.requestWifi(this)
+        }
+        bt.onClick {
+            dialog.dismiss()
+            Compat.requestBluetooth(this)
+        }
+        dialog.show()
+        return false
     }
 
     /** Pushes a secondary screen (Log viewer, Diagnostics, Help) over the current tab. */
@@ -283,11 +322,35 @@ class MainActivity : Activity() {
                 Di.saf(this).onTreePicked(data.data!!)
                 Ui.toast(this, "Folder granted for received files")
             }
+            LogViewerFragment.REQ_EXPORT -> {
+                if (resultCode == RESULT_OK && data?.data != null) {
+                    val ok = writeExport(data.data!!)
+                    if (!ok) Ui.toast(this, getString(R.string.export_failed, "the file could not be written"))
+                    val aware = (pushed as? ResultAware) ?: (shown as? ResultAware)
+                    aware?.onActivityResultHandled(requestCode, if (ok) RESULT_OK else RESULT_CANCELED)
+                    return
+                }
+                val aware = (pushed as? ResultAware) ?: (shown as? ResultAware)
+                aware?.onActivityResultHandled(requestCode, resultCode)
+            }
             else -> {
                 val aware = (pushed as? ResultAware) ?: (shown as? ResultAware)
                 aware?.onActivityResultHandled(requestCode, resultCode)
             }
         }
+    }
+
+    /**
+     * Writes the exported log to the document the user picked. The text comes from the log store
+     * again rather than being handed around, so there is nothing to keep in sync.
+     */
+    private fun writeExport(uri: Uri): Boolean = try {
+        contentResolver.openOutputStream(uri, "wt")?.use { out ->
+            out.write(Di.logs(this).exportText().toByteArray())
+            out.flush()
+        } != null
+    } catch (t: Throwable) {
+        false
     }
 
     override fun onResume() {

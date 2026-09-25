@@ -166,10 +166,18 @@
     <string name="categories">Categories</string>
     <string name="folders">Folders</string>
     <string name="cat_documents">Documents</string>
+    <string name="cat_files">Files</string>
     <string name="cat_ebooks">Ebooks</string>
     <string name="cat_archives">Archives</string>
     <string name="cat_apks">APKs</string>
     <string name="cat_large">Large files</string>
+    <string name="cat_large_hint">Over 50 MB</string>
+    <string name="browse_storage">Browse internal storage</string>
+    <string name="empty_folder">This folder is empty</string>
+    <string name="folder_needs_access">To browse this folder, allow all files access or pick it with "Add a folder".</string>
+    <string name="storage_root">Internal storage</string>
+    <string name="up_one_level">Up</string>
+    <string name="open">Open</string>
     <string name="folder_download">Download</string>
     <string name="folder_internal">Internal storage</string>
     <string name="add_folder">+ Add a folder</string>
@@ -253,6 +261,8 @@
     <string name="logs">Logs</string>
     <string name="log_app_log">App log</string>
     <string name="open_log_viewer">Open log viewer</string>
+    <string name="copied_to_clipboard">Log copied</string>
+    <string name="exported">Log saved</string>
     <string name="export_txt">Export .txt</string>
     <string name="clear_log">Clear log</string>
     <string name="crash_reports">Crash reports</string>
@@ -359,7 +369,14 @@
     <string name="receive_hint">Waiting for a sender to connect\u2026</string>
 
     <!--  files / history extras  -->
+    <string name="link_needed_title">No connection yet</string>
+    <string name="link_needed_body">MorseCode moves files over Wi-Fi or Bluetooth. Turn one on and both phones will find each other - nothing else is required, and there is no internet involved.</string>
+    <string name="turn_on_wifi">Turn on Wi-Fi</string>
+    <string name="turn_on_bluetooth">Bluetooth</string>
     <string name="send">Send</string>
+    <string name="clear_all">Clear all</string>
+    <string name="grid">GRID</string>
+    <string name="list">LIST</string>
     <string name="select_all">Select all</string>
     <string name="sort_by">Sort by</string>
     <string name="open_in_browser">Open in browser</string>

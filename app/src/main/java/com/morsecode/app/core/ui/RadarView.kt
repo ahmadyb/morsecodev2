@@ -67,14 +67,14 @@ class RadarView(ctx: Context) : View(ctx) {
 
     init {
         layoutParams = android.widget.LinearLayout.LayoutParams(
-            android.view.ViewGroup.LayoutParams.MATCH_PARENT, D.dp(ctx, 190f)
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT, D.dp(ctx, radarHeightDp())
         )
     }
 
     fun setMode(m: Mode) {
         mode = m
-        if (m == Mode.DISCOVERY) layoutParams = layoutParams.apply { height = D.dp(context, 190f) }
-        else layoutParams = layoutParams.apply { height = D.dp(context, 168f) }
+        if (m == Mode.DISCOVERY) layoutParams = layoutParams.apply { height = D.dp(context, radarHeightDp()) }
+        else layoutParams = layoutParams.apply { height = D.dp(context, (radarHeightDp() - 22f).coerceAtLeast(120f)) }
         requestLayout()
         invalidate()
     }
@@ -113,6 +113,19 @@ class RadarView(ctx: Context) : View(ctx) {
             invalidate()
             postDelayed(this, 50L)
         }
+    }
+
+    /**
+     * The radar is drawn as a set of concentric rings around a centre dot, so its height is what
+     * decides how much of the screen it takes. A fixed 190dp is lost on a tablet and crowds a
+     * small phone's dashboard; this follows the screen, within bounds a thumb and an eye agree on.
+     */
+    private fun radarHeightDp(): Float {
+        val widthDp = context.resources.configuration.screenWidthDp
+        val heightDp = context.resources.configuration.screenHeightDp
+        val byWidth = widthDp * 0.52f
+        val byHeight = heightDp * 0.26f
+        return minOf(byWidth, byHeight).coerceIn(140f, 260f)
     }
 
     override fun onDraw(canvas: Canvas) {

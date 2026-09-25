@@ -26,6 +26,16 @@ class TransferService : Service() {
         const val CHANNEL_WEB = "mc-webshare"
         const val NOTIF_ID = 4401
 
+        /**
+         * The notification's own Stop button.
+         *
+         * The notification is ongoing (it must be - it keeps sessions alive) and it had no action,
+         * so a user who wanted it gone had no way to say so short of force-stopping the app in
+         * Settings. Stopping means stopping: queued and running transfers are cancelled, WebShare
+         * is stopped, and the service brings itself down.
+         */
+        const val ACTION_STOP = "com.morsecode.app.action.STOP"
+
         /** True while the foreground session service is alive - shown in Settings. */
         @Volatile var isRunning: Boolean = false
     }
@@ -38,11 +48,48 @@ class TransferService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP) {
+            Log.info("Stop requested from the notification")
+            stopEverything()
+            return START_NOT_STICKY
+        }
         startForegroundCompat()
         startTicker()
         // Persist whatever queue exists so a relaunch can offer resume.
         Di.journal(this).save(Di.engine(this).items.value)
         return START_STICKY
+    }
+
+    private fun stopEverything() {
+        try {
+            val engine = Di.engine(this)
+            for (item in engine.items.value.toList()) {
+                if (!item.isTerminal) {
+                    try {
+                        engine.cancelItem(item)
+                    } catch (ignored: Throwable) {
+                    }
+                }
+            }
+            Di.web(this).stop()
+        } catch (t: Throwable) {
+            Log.warn("Stopping from the notification hit a problem: ${t.message}")
+        }
+        Compat.cancel(this, NOTIF_ID)
+        Compat.cancel(this, NOTIF_ID + 1)
+        stopForegroundCompat()
+        stopSelf()
+    }
+
+    private fun stopForegroundCompat() {
+        try {
+            if (Compat.isApi24) stopForeground(STOP_FOREGROUND_REMOVE)
+            else {
+                @Suppress("DEPRECATION")
+                stopForeground(true)
+            }
+        } catch (t: Throwable) {
+        }
     }
 
     private fun startForegroundCompat() {
@@ -51,7 +98,9 @@ class TransferService : Service() {
             CHANNEL_TRANSFERS,
             getString(R.string.notif_transfer_title),
             statusLine(),
-            R.drawable.ic_stat_mc
+            R.drawable.ic_stat_mc,
+            getString(R.string.stop),
+            Intent(this, TransferService::class.java).setAction(ACTION_STOP)
         )
         try {
             if (Compat.isApi29) {
@@ -86,7 +135,9 @@ class TransferService : Service() {
                     if (Di.prefs(this).notifications) {
                         val n = Compat.buildNotification(
                             this, CHANNEL_TRANSFERS,
-                            getString(R.string.notif_transfer_title), text, R.drawable.ic_stat_mc
+                            getString(R.string.notif_transfer_title), text, R.drawable.ic_stat_mc,
+                            getString(R.string.stop),
+                            Intent(this, TransferService::class.java).setAction(ACTION_STOP)
                         )
                         Compat.notify(this, NOTIF_ID, n)
                     }

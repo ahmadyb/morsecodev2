@@ -254,6 +254,85 @@ class MediaLibrary(private val ctx: Context) {
         return if (i >= 0 && !c.isNull(i)) c.getString(i) ?: "" else ""
     }
 
+    /**
+     * The categories the Files tab shows, as the design does: documents, ebooks, archives, APKs and
+     * "large files". They are matched on MIME type where the platform reports one and on the file
+     * name where it does not - an .epub sitting in Downloads is routinely indexed as
+     * `application/octet-stream`, and a file the user can see must never be missing from the count
+     * above it.
+     */
+    enum class FileGroup(val labelRes: Int) {
+        DOCUMENTS(com.morsecode.app.R.string.cat_documents),
+        EBOOKS(com.morsecode.app.R.string.cat_ebooks),
+        ARCHIVES(com.morsecode.app.R.string.cat_archives),
+        APKS(com.morsecode.app.R.string.cat_apks),
+        LARGE(com.morsecode.app.R.string.cat_large)
+    }
+
+    /** Everything over this shows up under "Large files" (the design's own label). */
+    private val largeBytes = 50L * 1024 * 1024
+
+    fun countGroup(group: FileGroup): Int = listGroup(group, 0).size
+
+    /** Files in a group, newest first, optionally capped. */
+    fun listGroup(group: FileGroup, limit: Int): List<MediaItem> {
+        val (selection, args) = groupSelection(group)
+        val out = ArrayList<MediaItem>()
+        val cursor = try {
+            openCursor(Category.ALL, selection, args)
+        } catch (t: Throwable) {
+            alog("Files group query failed (${group.name}): ${t.message}")
+            return out
+        } ?: return out
+        try {
+            cursor.use { c ->
+                if (!c.moveToFirst()) return out
+                var read = 0
+                val cap = if (limit > 0) limit else Int.MAX_VALUE
+                while (read < cap) {
+                    out.add(read(c))
+                    read++
+                    if (!c.moveToNext()) break
+                }
+            }
+        } catch (t: Throwable) {
+            alog("Files group read failed (${group.name}): ${t.message}")
+        }
+        lastNote = "$lastNote; ${group.name} ${out.size} row(s)"
+        return out
+    }
+
+    private fun like(column: String, vararg patterns: String): String =
+        "(" + patterns.joinToString(" OR ") { "$column LIKE '$it'" } + ")"
+
+    private fun groupSelection(group: FileGroup): Pair<String, Array<String>> {
+        val size = MediaStore.MediaColumns.SIZE
+        val mime = MediaStore.MediaColumns.MIME_TYPE
+        val name = MediaStore.MediaColumns.DISPLAY_NAME
+        val alive = "$size > 0"
+        val sel = when (group) {
+            FileGroup.DOCUMENTS -> "$alive AND (" +
+                like(mime, "application/pdf", "application/msword", "application/vnd.ms-%",
+                    "application/vnd.openxmlformats-%", "text/%", "application/rtf", "application/x-rtf") +
+                " OR " + like(name, "%.doc", "%.docx", "%.xls", "%.xlsx", "%.ppt", "%.pptx", "%.txt",
+                    "%.rtf", "%.csv", "%.md", "%.odt", "%.ods", "%.odp") + ")"
+            FileGroup.EBOOKS -> "$alive AND (" +
+                like(mime, "application/epub+zip", "application/x-mobipocket-ebook",
+                    "application/vnd.amazon.ebook", "application/x-fictionbook+xml") +
+                " OR " + like(name, "%.epub", "%.mobi", "%.azw", "%.azw3", "%.fb2", "%.cbz", "%.cbr",
+                    "%.djvu") + ")"
+            FileGroup.ARCHIVES -> "$alive AND (" +
+                like(mime, "application/zip", "application/x-rar-compressed", "application/x-7z-compressed",
+                    "application/gzip", "application/x-tar", "application/x-bzip2", "application/x-xz") +
+                " OR " + like(name, "%.zip", "%.rar", "%.7z", "%.tar", "%.gz", "%.bz2", "%.xz", "%.iso") + ")"
+            FileGroup.APKS -> "$alive AND (" +
+                like(mime, "application/vnd.android.package-archive") +
+                " OR " + like(name, "%.apk", "%.apks", "%.xapk") + ")"
+            FileGroup.LARGE -> "$alive AND $size > $largeBytes"
+        }
+        return sel to emptyArray()
+    }
+
     private fun selectionFor(category: Category): Pair<String, Array<String>> {
         val images = "${MediaStore.MediaColumns.MIME_TYPE} LIKE 'image/%'"
         val videos = "${MediaStore.MediaColumns.MIME_TYPE} LIKE 'video/%'"

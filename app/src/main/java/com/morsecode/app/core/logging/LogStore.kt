@@ -23,6 +23,19 @@ class LogStore(private val ctx: Context) {
 
     private val ring = ArrayDeque<Line>()
     private val max = 1200
+
+    /**
+     * The log lives on disk as well as in memory.
+     *
+     * It used to be a ring buffer only, so the trail a crash would explain vanished the moment the
+     * process died - "the app crashed several times but there are no crash logs" was exactly that.
+     * The ring is written out (debounced) and read back on the next start, and it stays until the
+     * user clears it, which is what the Log viewer promises.
+     */
+    private val trailFile: File get() = File(ctx.filesDir, "morsecode-log.txt")
+    private val io = Object()
+    private var flushScheduled = false
+    private var loaded = false
     private val listener: MutableList<() -> Unit> = mutableListOf()
     private val prefs get() = Di.prefs(ctx)
 
@@ -63,16 +76,91 @@ class LogStore(private val ctx: Context) {
         for (l in snapshot) {
             try { l() } catch (t: Throwable) { /* a listener must never break logging */ }
         }
+        scheduleFlush()
         if (level == Level.ERROR) persistTail()
     }
 
     fun snapshot(): List<Line> = synchronized(ring) { ArrayList(ring) }
 
+    /**
+     * Reads the previous session's lines back. Called once, from the first thread that touches the
+     * store, so the Log viewer opens on the history rather than on whatever happened since launch.
+     */
+    fun restore() {
+        synchronized(io) {
+            if (loaded) return
+            loaded = true
+            try {
+                val f = trailFile
+                if (!f.exists()) return
+                val lines = f.readLines()
+                val kept = if (lines.size > max) lines.subList(lines.size - max, lines.size) else lines
+                synchronized(ring) {
+                    for (raw in kept) {
+                        val line = parse(raw) ?: continue
+                        ring.addLast(line)
+                    }
+                }
+            } catch (ignored: Throwable) {
+            }
+        }
+    }
+
+    /** `HH:mm:ss LEVEL message` back into a [Line]; anything older is dropped rather than guessed. */
+    private fun parse(raw: String): Line? {
+        if (raw.length < 18) return null
+        val level = when {
+            raw.startsWith("WARN", 9) -> Level.WARN
+            raw.startsWith("ERROR", 9) -> Level.ERROR
+            raw.startsWith("INFO", 9) -> Level.INFO
+            else -> return null
+        }
+        val time = try {
+            synchronized(TIME) { TIME.parse(raw.substring(0, 8))?.time } ?: System.currentTimeMillis()
+        } catch (t: Throwable) {
+            System.currentTimeMillis()
+        }
+        return Line(time, level, raw.substring(16))
+    }
+
+    private fun scheduleFlush() {
+        synchronized(io) {
+            if (flushScheduled) return
+            flushScheduled = true
+        }
+        try {
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                synchronized(io) { flushScheduled = false }
+                flush()
+            }, 1500)
+        } catch (t: Throwable) {
+            flush()
+        }
+    }
+
+    /** Writes the whole (bounded) ring out. Small - at most a few hundred KB - and rare. */
+    fun flush() {
+        try {
+            val sb = StringBuilder()
+            for (line in snapshot()) sb.append(line.render()).append('\n')
+            val f = trailFile
+            val tmp = File(f.parentFile, f.name + ".tmp")
+            tmp.writeText(sb.toString())
+            if (f.exists()) f.delete()
+            tmp.renameTo(f)
+        } catch (ignored: Throwable) {
+        }
+    }
+
     fun clear() {
         synchronized(ring) { ring.clear() }
         crashFile().delete()
+        trailFile.delete()
         info("Log cleared")
     }
+
+    /** True when there is history on disk, so the viewer can say where it came from. */
+    fun hasStoredTrail(): Boolean = try { trailFile.exists() && trailFile.length() > 0 } catch (t: Throwable) { false }
 
     // ---- crash reports -----------------------------------------------------
 
