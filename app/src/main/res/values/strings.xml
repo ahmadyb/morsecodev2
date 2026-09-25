@@ -81,6 +81,7 @@
     <string name="resume">Resume</string>
     <string name="resume_all">Resume all</string>
     <string name="retry">Retry</string>
+    <string name="stop">Stop</string>
     <string name="cancel">Cancel</string>
     <string name="send_now">Send now</string>
     <string name="remove">Remove</string>

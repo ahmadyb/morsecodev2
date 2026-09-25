@@ -178,7 +178,7 @@ class LogViewerFragment(private val activity: Activity) : Screen, ResultAware {
         // The header names the version and the device, so a pasted log is self-describing.
         val sb = StringBuilder(Di.logs(activity).exportText().substringBefore("=".repeat(64)))
         for (line in lines) sb.append(line.render()).append('\n')
-        val crashes = Di.logs(activity).crashes()
+        val crashes = Di.logs(activity).readCrashes()
         if (crashes.isNotBlank()) sb.append('\n').append(crashes)
         return sb.toString()
     }

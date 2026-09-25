@@ -147,6 +147,10 @@ class FileManagerFragment(private val activity: Activity) : Screen {
         generation++
         val gen = generation
         body.removeAllViews()
+        // Indicators from the previous build belong to detached views; keeping them would grow the
+        // maps forever and repaint nothing.
+        checks.clear()
+        rings.clear()
         body.addView(header())
         body.addView(W.gap(activity, 6))
         body.addView(pillRow())
